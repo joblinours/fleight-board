@@ -189,6 +189,8 @@ Viewer < Editor < Presenter < Co-owner < Owner
 ```
 
 - Il n'existe **pas** de rôle « Admin » au niveau d'un whiteboard : le rôle Admin est réservé au gestionnaire de l'application.
+- Les rôles sont cumulatifs : un Presenter peut aussi éditer.
+- Seul l'**Owner** peut supprimer le whiteboard et en transférer la propriété ; le **Co-owner** gère tout le reste (membres, partage, permissions).
 - On ne peut déléguer qu'un rôle au plus égal au sien.
 - Un Admin global qui crée un whiteboard y agit comme un User ; le rôle maximal qu'il peut déléguer est **Co-owner**.
 
@@ -259,6 +261,8 @@ Seront documentés : variables d'environnement, volumes, healthchecks (`/health`
 _(prévu)_ Prérequis envisagés : Node.js LTS, pnpm, Docker.
 
 ## Roadmap
+
+Le plan détaillé (jalons, critères de validation, décisions) est tenu dans [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) sur la branche `dev`.
 
 - [ ] **Phase 0 — Proof of Concept technique** : canvas desktop + iPad/Apple Pencil, objets structurés, connecteurs, WebSocket, 2+ utilisateurs, locks, undo individuel, persistance, reconnexion, audit log.
 - [ ] **Phase 1 — Core MVP** : auth locale, Users/Admins, canvas standard et infini, primitives, texte, images, dessin libre, sélection, groupes, frames, connecteurs, undo/redo, collaboration temps réel, locks, curseurs, présence, sessions par code, public/privé, permissions, guests, audit log.
