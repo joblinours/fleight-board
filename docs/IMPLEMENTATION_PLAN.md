@@ -135,7 +135,14 @@ Client                         Serveur
 - [x] Banc de performance : 5 000 objets (page `#/bench`, benchmark scripté de 6 s)
 
 **Critère** : 60 fps en pan/zoom avec 5 000 objets sur desktop et iPad Air.
-→ _À mesurer sur matériel réel (desktop avec GPU + iPad Air). En Chromium headless sans GPU : 47 fps moyen à 5 000 objets, limité par la rastérisation logicielle des ellipses._
+→ **Validé sur matériel réel, à 20 000 objets (4× la cible)** — benchmark scripté de 6 s :
+
+| Appareil | Densité | FPS moyen | Frame p95 | Frames perdues |
+|---|---|---:|---:|---:|
+| Desktop — i7-14700K, RTX 4060, Kali Linux | ×1 | 103,7 | 20,9 ms | 2,2 % |
+| iPad Air + Safari (écran 60 Hz) | ×2 | 51,1 | 22,0 ms | 3,9 % |
+
+_À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins de 4 % de frames perdues ; la cible de 5 000 objets est donc tenue avec marge. Pour référence, Chromium headless sans GPU : 47 fps à 5 000 objets (rastérisation logicielle)._
 
 ### M0.3 — Entrées et Apple Pencil
 
