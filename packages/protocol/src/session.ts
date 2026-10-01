@@ -60,6 +60,18 @@ export const GestureEndSchema = z.object({
   gestureId: z.string().min(1).max(64),
 });
 
+const ObjectIdsSchema = z.array(ObjectIdSchema).min(1).max(MAX_OPERATIONS_PER_BATCH);
+
+/**
+ * Verrouillage temporaire d'objets avant de les modifier (glisser, redimensionner,
+ * éditer un texte). Renouveler la demande prolonge le verrou.
+ */
+export const LockMessageSchema = z.object({ type: z.literal('LOCK'), objectIds: ObjectIdsSchema });
+export const UnlockMessageSchema = z.object({
+  type: z.literal('UNLOCK'),
+  objectIds: ObjectIdsSchema,
+});
+
 /** Demande de l'état complet du board (après un rejet, par exemple). */
 export const SyncRequestSchema = z.object({ type: z.literal('SYNC_REQUEST') });
 
@@ -68,6 +80,8 @@ export const ClientSessionMessageSchema = z.discriminatedUnion('type', [
   LeaveMessageSchema,
   OperationsMessageSchema,
   GestureEndSchema,
+  LockMessageSchema,
+  UnlockMessageSchema,
   SyncRequestSchema,
 ]);
 export type ClientSessionMessage = z.infer<typeof ClientSessionMessageSchema>;
@@ -86,10 +100,30 @@ export const SnapshotSchema = z.object({
 });
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 
+/** Verrous actifs : objet → connexion qui le détient. */
+export const LockTableSchema = z.record(z.string(), z.string());
+
 export const JoinedMessageSchema = z.object({
   type: z.literal('JOINED'),
+  /** Identifiant de cette connexion (pour reconnaître ses propres verrous). */
+  self: z.string(),
   snapshot: SnapshotSchema,
   participants: z.array(ParticipantSchema),
+  locks: LockTableSchema,
+});
+
+/** Changement des verrous, diffusé à tous les participants (demandeur compris). */
+export const LocksMessageSchema = z.object({
+  type: z.literal('LOCKS'),
+  locked: LockTableSchema,
+  unlocked: z.array(z.string()),
+});
+
+/** Demande de verrou refusée : au moins un objet est détenu par une autre connexion. */
+export const LockDeniedSchema = z.object({
+  type: z.literal('LOCK_DENIED'),
+  objectIds: z.array(z.string()),
+  holder: z.string(),
 });
 
 export const SnapshotMessageSchema = z.object({
@@ -117,7 +151,7 @@ export const AckMessageSchema = z.object({
 export const RejectMessageSchema = z.object({
   type: z.literal('REJECT'),
   batchId: z.string(),
-  code: z.enum(['INVALID_OPERATION', 'NOT_JOINED']),
+  code: z.enum(['INVALID_OPERATION', 'NOT_JOINED', 'LOCKED']),
   message: z.string(),
 });
 
@@ -139,6 +173,8 @@ export const ServerSessionMessageSchema = z.discriminatedUnion('type', [
   RejectMessageSchema,
   ParticipantJoinedSchema,
   ParticipantLeftSchema,
+  LocksMessageSchema,
+  LockDeniedSchema,
 ]);
 export type ServerSessionMessage = z.infer<typeof ServerSessionMessageSchema>;
 export type RemoteOperationsMessage = z.infer<typeof RemoteOperationsMessageSchema>;

@@ -18,6 +18,9 @@ export type ToolStyle = {
   penSize: number;
 };
 
+/** Participant qui modifie un objet. */
+export type LockOwner = { name: string; color: string };
+
 /** Services fournis aux outils par l'éditeur. */
 export type ToolContext = {
   readonly document: BoardDocument;
@@ -34,6 +37,13 @@ export type ToolContext = {
     filter?: (object: BoardObject) => boolean,
   ): BoardObject | undefined;
   apply(operations: DocumentOperation[]): void;
+  /** Participant qui modifie l'objet, si ce n'est pas l'utilisateur local. */
+  lockedBy(id: string): LockOwner | undefined;
+  /**
+   * Verrouille des objets pour la durée du geste en cours.
+   * Retourne `false` (sans rien verrouiller) si l'un d'eux est modifié par un autre participant.
+   */
+  lock(ids: Iterable<string>): boolean;
   nextZIndex(): number;
   createId(): string;
   /** Ouvre l'édition du texte ou du label d'un objet. */

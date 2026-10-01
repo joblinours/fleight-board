@@ -4,6 +4,7 @@ import {
   type Operation,
   type Participant,
   PROTOCOL_VERSION,
+  type RejectMessage,
   type ServerSessionMessage,
   ServerSessionMessageSchema,
   type Snapshot,
@@ -23,8 +24,15 @@ export type CollaborationEvents = {
   onStatus?(status: ConnectionStatus): void;
   onParticipants?(participants: readonly Participant[]): void;
   /** Un lot local a été refusé : l'état a été resynchronisé depuis le serveur. */
-  onRejected?(message: string): void;
+  onRejected?(code: RejectMessage['code'], message: string): void;
+  /** Les verrous ont changé (objet → connexion qui le détient). */
+  onLocks?(locks: ReadonlyMap<string, string>): void;
+  /** Une demande de verrou a été refusée : l'objet est modifié par `holder`. */
+  onLockDenied?(objectIds: readonly string[], holder: string): void;
 };
+
+/** Intervalle de renouvellement des verrous détenus (le serveur les expire après 10 s). */
+export const LOCK_RENEW_MS = 4000;
 
 export type CollaborationClientOptions = CollaborationEvents & {
   boardId: string;
@@ -71,6 +79,11 @@ export class CollaborationClient {
   #openGesture: string | undefined;
   #seq = 0;
   readonly #versions = new Map<string, number>();
+  /** Verrous connus : objet → connexion qui le détient. */
+  readonly #locks = new Map<string, string>();
+  /** Verrous demandés par ce client, renouvelés tant qu'ils sont tenus. */
+  readonly #held = new Set<string>();
+  #renewScheduled = false;
 
   constructor(options: CollaborationClientOptions) {
     this.#options = options;
@@ -157,6 +170,30 @@ export class CollaborationClient {
     this.#send({ type: 'OPS', batchId, operations, ...(gesture ? { gesture } : {}) });
   }
 
+  /** Verrouille des objets avant de les modifier (renouvelé jusqu'à `unlock`). */
+  lock(objectIds: Iterable<string>): void {
+    const ids = [...objectIds].filter((id) => !this.#held.has(id));
+    if (!ids.length) return;
+    for (const id of ids) this.#held.add(id);
+    this.#send({ type: 'LOCK', objectIds: ids });
+    this.#scheduleRenew();
+  }
+
+  unlock(objectIds: Iterable<string>): void {
+    const ids = [...objectIds].filter((id) => this.#held.delete(id));
+    if (ids.length) this.#send({ type: 'UNLOCK', objectIds: ids });
+  }
+
+  /** Connexion qui modifie l'objet, si ce n'est pas celle-ci. */
+  lockedByOther(objectId: string): string | undefined {
+    const holder = this.#locks.get(objectId);
+    return holder && holder !== this.#connectionId ? holder : undefined;
+  }
+
+  get locks(): ReadonlyMap<string, string> {
+    return this.#locks;
+  }
+
   /** Message reçu du serveur. */
   handleMessage(raw: string): void {
     let data: unknown;
@@ -176,6 +213,12 @@ export class CollaborationClient {
   #handle(message: ServerSessionMessage): void {
     switch (message.type) {
       case 'JOINED':
+        this.#connectionId = message.self;
+        this.#locks.clear();
+        for (const [id, holder] of Object.entries(message.locks)) this.#locks.set(id, holder);
+        this.#options.onLocks?.(this.#locks);
+        // Verrous tenus avant une reconnexion : on les redemande.
+        if (this.#held.size) this.#send({ type: 'LOCK', objectIds: [...this.#held] });
         this.#loadSnapshot(message.snapshot);
         this.#participants = message.participants;
         this.#options.onParticipants?.(this.#participants);
@@ -194,9 +237,22 @@ export class CollaborationClient {
         // État local divergent : on abandonne les opérations en attente et on resynchronise.
         this.#pending = [];
         this.#send({ type: 'SYNC_REQUEST' });
-        this.#options.onRejected?.(message.message);
+        this.#options.onRejected?.(message.code, message.message);
         break;
       }
+      case 'LOCKS':
+        for (const id of message.unlocked) this.#locks.delete(id);
+        for (const [id, holder] of Object.entries(message.locked)) this.#locks.set(id, holder);
+        this.#options.onLocks?.(this.#locks);
+        break;
+      case 'LOCK_DENIED':
+        for (const id of message.objectIds) {
+          this.#held.delete(id);
+          this.#locks.set(id, message.holder);
+        }
+        this.#options.onLocks?.(this.#locks);
+        this.#options.onLockDenied?.(message.objectIds, message.holder);
+        break;
       case 'OPS':
         this.#applyRemote(message.operations);
         this.#seq = Math.max(this.#seq, message.seq);
@@ -300,6 +356,19 @@ export class CollaborationClient {
       if (version === 0) this.#versions.delete(id);
       else this.#versions.set(id, version);
     }
+  }
+
+  #scheduleRenew(): void {
+    if (this.#renewScheduled) return;
+    this.#renewScheduled = true;
+    this.#schedule(() => {
+      this.#renewScheduled = false;
+      // Un objet supprimé entre-temps n'a plus de verrou à renouveler.
+      for (const id of this.#held) if (!this.document.has(id)) this.#held.delete(id);
+      if (!this.#held.size) return;
+      this.#send({ type: 'LOCK', objectIds: [...this.#held] });
+      this.#scheduleRenew();
+    }, LOCK_RENEW_MS);
   }
 
   #scheduleFlush(): void {

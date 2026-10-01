@@ -33,8 +33,13 @@ const app = await buildApp({
   },
 });
 
+// Libération des verrous abandonnés (client parti sans prévenir).
+const lockSweep = setInterval(() => void hub?.sweepLocks(), 1000);
+lockSweep.unref();
+
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, 'arrêt en cours');
+  clearInterval(lockSweep);
   await app.close();
   // Les lots déjà confirmés sont enregistrés ; on attend ceux en cours.
   await hub?.flush();

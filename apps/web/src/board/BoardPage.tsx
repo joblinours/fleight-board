@@ -2,6 +2,7 @@ import { BoardEditor, type InputMode, type ToolName } from '@fleight/canvas';
 import { CollaborationClient, type ConnectionStatus } from '@fleight/collaboration';
 import type { Participant } from '@fleight/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createLockService } from './lock-service';
 import { sampleDiagram } from './sample-diagram';
 import { connectWebSocket, displayName } from './websocket-transport';
 
@@ -51,8 +52,19 @@ export function BoardPage({ boardId }: { boardId?: string }) {
           boardId,
           name: displayName(),
           onStatus: setStatus,
-          onParticipants: setParticipants,
-          onRejected: setRejection,
+          onParticipants: (list) => {
+            setParticipants(list);
+            editorRef.current?.refresh();
+          },
+          onRejected: (code) =>
+            setRejection(
+              code === 'LOCKED'
+                ? 'Cet objet est en cours de modification par un autre participant.'
+                : 'Une modification a été refusée par le serveur ; le board a été resynchronisé.',
+            ),
+          onLocks: () => editorRef.current?.refresh(),
+          onLockDenied: () =>
+            setRejection('Cet objet est en cours de modification par un autre participant.'),
         })
       : undefined;
     const disconnect = client ? connectWebSocket(client) : undefined;
@@ -63,6 +75,7 @@ export function BoardPage({ boardId }: { boardId?: string }) {
       ...(client
         ? {
             document: client.document,
+            locks: createLockService(client),
             sink: {
               apply: (operations, gesture) => client.applyLocal(operations, gesture),
               endGesture: (gestureId) => client.endGesture(gestureId),
@@ -228,7 +241,7 @@ export function BoardPage({ boardId }: { boardId?: string }) {
 
       {rejection && (
         <div className="board-toast" role="status">
-          Une modification a été refusée par le serveur ; le board a été resynchronisé.
+          {rejection}
         </div>
       )}
 

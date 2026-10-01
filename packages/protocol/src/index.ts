@@ -42,6 +42,10 @@ export {
   JoinedMessageSchema,
   JoinMessageSchema,
   LeaveMessageSchema,
+  LockDeniedSchema,
+  LockMessageSchema,
+  LocksMessageSchema,
+  LockTableSchema,
   MAX_OPERATIONS_PER_BATCH,
   type Operation,
   OperationSchema,
@@ -61,5 +65,6 @@ export {
   SnapshotMessageSchema,
   SnapshotSchema,
   SyncRequestSchema,
+  UnlockMessageSchema,
 } from './session';
 export { PROTOCOL_VERSION } from './version';
