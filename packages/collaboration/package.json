@@ -9,5 +9,10 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@fleight/document": "workspace:*",
+    "@fleight/protocol": "workspace:*",
+    "@fleight/shared": "workspace:*"
   }
 }

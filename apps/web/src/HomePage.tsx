@@ -46,6 +46,10 @@ export function HomePage() {
         <li>
           <a href="#/board">Objets et connecteurs</a> — M0.4
         </li>
+        <li>
+          <a href="#/board/demo">Board collaboratif « demo »</a> — M0.5 (ouvrir dans deux
+          navigateurs)
+        </li>
       </ul>
     </main>
   );

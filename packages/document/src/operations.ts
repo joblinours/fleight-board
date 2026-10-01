@@ -1,9 +1,10 @@
-import type { BoardObject } from '@fleight/protocol';
+import type { Operation } from '@fleight/protocol';
 
-/** Modification partielle d'un objet ; `id` et `type` ne changent jamais. */
-export type ObjectPatch = Partial<Omit<BoardObject, 'id' | 'type'>> & Record<string, unknown>;
+/**
+ * Modification partielle d'un objet ; `id` et `type` ne changent jamais.
+ * Le résultat est validé lors de l'application.
+ */
+export type ObjectPatch = Record<string, unknown>;
 
-export type DocumentOperation =
-  | { kind: 'create'; object: BoardObject }
-  | { kind: 'update'; id: string; patch: ObjectPatch }
-  | { kind: 'delete'; id: string };
+/** Opération sur le document, telle qu'elle circule dans le protocole. */
+export type DocumentOperation = Operation;

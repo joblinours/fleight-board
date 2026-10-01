@@ -35,12 +35,25 @@ import type { Tool, ToolContext, ToolName, ToolPoint, ToolStyle } from './tools/
 const TOLERANCE_PX: Record<PointerKind, number> = { mouse: 4, pen: 6, touch: 12 };
 const SELECTION_COLOR = '#2563eb';
 
+/** Geste en cours : ses lots d'opérations sont regroupés côté collaboration. */
+export type GestureInfo = { id: string; final: boolean };
+
+/**
+ * Destination des opérations locales. Par défaut, elles sont appliquées
+ * directement au document ; en collaboration, le client les applique et les envoie.
+ */
+export type OperationSink = {
+  apply(operations: DocumentOperation[], gesture?: GestureInfo): void;
+  endGesture(gestureId: string): void;
+};
+
 export type BoardEditorOptions = {
   /** Calque des objets. */
   sceneCanvas: HTMLCanvasElement;
   /** Calque d'interface superposé (sélection, aperçus) ; reçoit les entrées. */
   overlayCanvas: HTMLCanvasElement;
   document?: BoardDocument;
+  sink?: OperationSink;
   /** Demande l'ouverture de l'éditeur de texte pour un objet. */
   onEditText?(id: string): void;
   onToolChange?(tool: ToolName): void;
@@ -72,6 +85,8 @@ export class BoardEditor {
   readonly #modifiers = { shift: false };
   readonly #cleanups: Array<() => void> = [];
   #tool: Tool;
+  /** Geste en cours (entre pointer down et pointer up). */
+  #gestureId: string | undefined;
 
   constructor(options: BoardEditorOptions) {
     this.#options = options;
@@ -118,10 +133,19 @@ export class BoardEditor {
       time: sample.time,
     });
     this.router = new InputRouter({
-      drawStart: (pointer, sample) => this.#tool.down(this.#context, toWorld(sample), pointer.kind),
+      drawStart: (pointer, sample) => {
+        this.#gestureId = createId();
+        this.#tool.down(this.#context, toWorld(sample), pointer.kind);
+      },
       drawMove: (_pointer, samples) => this.#tool.move(this.#context, samples.map(toWorld)),
-      drawEnd: () => this.#tool.up(this.#context),
-      drawCancel: () => this.#tool.cancel(this.#context),
+      drawEnd: () => {
+        this.#tool.up(this.#context);
+        this.#endGesture();
+      },
+      drawCancel: () => {
+        this.#tool.cancel(this.#context);
+        this.#endGesture();
+      },
       pan: (dx, dy) => this.#panBy(dx, dy),
       zoom: (anchor, factor) => this.#zoomAt(anchor, factor),
     });
@@ -159,7 +183,26 @@ export class BoardEditor {
   }
 
   apply(operations: DocumentOperation[]): void {
-    if (operations.length) this.document.apply(operations);
+    if (!operations.length) return;
+    const sink = this.#options.sink;
+    if (!sink) {
+      this.document.apply(operations);
+      return;
+    }
+    const gestureId = this.#gestureId;
+    sink.apply(operations, gestureId ? { id: gestureId, final: false } : undefined);
+  }
+
+  /** Remplace tout le contenu du board (exemple, import) en un seul lot. */
+  replaceContent(objects: BoardObject[]): void {
+    this.selection.clear();
+    this.apply([
+      ...deleteObjectsOperations(
+        this.document,
+        [...this.document.all()].map(({ id }) => id),
+      ),
+      ...objects.map((object) => ({ kind: 'create' as const, object })),
+    ]);
   }
 
   deleteSelection(): void {
@@ -304,6 +347,12 @@ export class BoardEditor {
     ctx.restore();
 
     this.#tool.paint?.(ctx, view, this.#context);
+  }
+
+  #endGesture(): void {
+    const gestureId = this.#gestureId;
+    this.#gestureId = undefined;
+    if (gestureId) this.#options.sink?.endGesture(gestureId);
   }
 
   #panBy(dx: number, dy: number): void {

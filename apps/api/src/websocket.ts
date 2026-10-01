@@ -1,3 +1,4 @@
+import type { CollaborationHub } from '@fleight/collaboration';
 import {
   ClientHelloSchema,
   PROTOCOL_VERSION,
@@ -13,11 +14,15 @@ export const CloseCode = {
   UnsupportedProtocolVersion: 4426,
 } as const;
 
-export async function registerWebSocket(app: FastifyInstance) {
+export async function registerWebSocket(app: FastifyInstance, { hub }: { hub: CollaborationHub }) {
   app.get('/ws', { websocket: true }, (socket, request) => {
     const connectionId = createId();
     const log = request.log.child({ connectionId });
     let greeted = false;
+    const session = hub.open(connectionId, (message) => {
+      if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
+    });
+    socket.on('close', () => session.close());
 
     const fail = (error: ServerError, closeCode: number) => {
       socket.send(JSON.stringify(error));
@@ -65,8 +70,10 @@ export async function registerWebSocket(app: FastifyInstance) {
         };
         socket.send(JSON.stringify(reply));
         log.debug('connexion WebSocket établie');
+        return;
       }
-      // Les messages de session (JOIN, opérations…) arrivent au jalon M0.5.
+
+      session.receive(data);
     });
   });
 }

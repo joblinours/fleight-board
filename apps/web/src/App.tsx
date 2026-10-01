@@ -17,6 +17,9 @@ export function App() {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
+  const board = route.match(/^\/board\/([A-Za-z0-9_-]{1,64})$/);
+  if (board?.[1]) return <BoardPage key={board[1]} boardId={board[1]} />;
+
   switch (route) {
     case '/bench':
       return <BenchPage />;

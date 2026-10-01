@@ -66,7 +66,7 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 
 | Fonctionnalité | Statut |
 |---|---|
-| Synchronisation temps réel via WebSocket | _(prévu)_ |
+| Synchronisation temps réel via WebSocket | 🧪 Prototypée (M0.5), sans persistance |
 | Verrouillage temporaire des objets en cours d'édition | _(prévu)_ |
 | Curseurs et présence (modes « Drawing only » / « Cursor visible ») | _(prévu)_ |
 | Undo/redo individuel (chacun n'annule que ses propres actions) | _(prévu)_ |
@@ -227,7 +227,7 @@ fleight-board/
 │   └── api/              # Backend Fastify (REST + WebSocket)
 ├── packages/
 │   ├── canvas/           # Moteur de rendu et d'entrée (caméra, rendu, Pointer Events)
-│   ├── collaboration/    # Synchronisation, pub/sub, locks, undo
+│   ├── collaboration/    # Sessions (serveur), client optimiste, pub/sub
 │   ├── document/         # État du board, opérations et géométrie (client et serveur)
 │   ├── protocol/         # Schémas zod (objets, messages) versionnés
 │   └── shared/           # Utilitaires communs (identifiants ULID…)
@@ -268,7 +268,14 @@ cp apps/api/.env.example apps/api/.env       # configuration de l'API
 pnpm dev                                     # API sur :3000, web sur :5173
 ```
 
-Ouvrez http://localhost:5173. Prototypes : benchmark du rendu sur http://localhost:5173/#/bench, dessin au stylet et au doigt sur http://localhost:5173/#/ink, objets et connecteurs sur http://localhost:5173/#/board. Le serveur Vite écoute sur le réseau local : depuis un iPad sur le même Wi-Fi, ouvrez `http://<ip-de-votre-machine>:5173`. Il relaie `/api/*` et `/ws` vers l'API.
+Si le port 5432 est déjà utilisé (PostgreSQL installé localement), lancez la base sur un autre port et reportez-le dans `DATABASE_URL` :
+
+```bash
+POSTGRES_PORT=5433 pnpm db:up
+# apps/api/.env : DATABASE_URL=postgres://fleight:fleight@localhost:5433/fleight
+```
+
+Ouvrez http://localhost:5173. Prototypes : benchmark du rendu sur http://localhost:5173/#/bench, dessin au stylet et au doigt sur http://localhost:5173/#/ink, objets et connecteurs sur http://localhost:5173/#/board, board collaboratif sur http://localhost:5173/#/board/demo (à ouvrir dans plusieurs navigateurs ; nécessite l'API). Le serveur Vite écoute sur le réseau local : depuis un iPad sur le même Wi-Fi, ouvrez `http://<ip-de-votre-machine>:5173`. Il relaie `/api/*` et `/ws` vers l'API.
 
 ### Commandes
 
