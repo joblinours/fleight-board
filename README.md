@@ -66,7 +66,7 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 
 | Fonctionnalité | Statut |
 |---|---|
-| Synchronisation temps réel via WebSocket | 🧪 Prototypée (M0.5), sans persistance |
+| Synchronisation temps réel via WebSocket | 🧪 Prototypée (M0.5), persistée dans PostgreSQL (M0.6) |
 | Verrouillage temporaire des objets en cours d'édition | _(prévu)_ |
 | Curseurs et présence (modes « Drawing only » / « Cursor visible ») | _(prévu)_ |
 | Undo/redo individuel (chacun n'annule que ses propres actions) | _(prévu)_ |
@@ -276,6 +276,14 @@ POSTGRES_PORT=5433 pnpm db:up
 ```
 
 Ouvrez http://localhost:5173. Prototypes : benchmark du rendu sur http://localhost:5173/#/bench, dessin au stylet et au doigt sur http://localhost:5173/#/ink, objets et connecteurs sur http://localhost:5173/#/board, board collaboratif sur http://localhost:5173/#/board/demo (à ouvrir dans plusieurs navigateurs ; nécessite l'API). Le serveur Vite écoute sur le réseau local : depuis un iPad sur le même Wi-Fi, ouvrez `http://<ip-de-votre-machine>:5173`. Il relaie `/api/*` et `/ws` vers l'API.
+
+Au démarrage, l'API applique automatiquement les migrations de la base (`apps/api/drizzle`). Après une modification de `apps/api/src/db/schema.ts`, générez la migration avec `pnpm --filter @fleight/api exec drizzle-kit generate`.
+
+Les tests d'intégration PostgreSQL ne s'exécutent que si `TEST_DATABASE_URL` est défini :
+
+```bash
+TEST_DATABASE_URL=postgres://fleight:fleight@localhost:5432/fleight pnpm test
+```
 
 ### Commandes
 

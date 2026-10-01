@@ -67,6 +67,8 @@ export class CollaborationClient {
   /** Modifications locales non confirmées, dans l'ordre d'application. */
   #pending: PendingEntry[] = [];
   #flushScheduled = false;
+  /** Geste dont des lots ont été envoyés sans le lot final. */
+  #openGesture: string | undefined;
   #seq = 0;
   readonly #versions = new Map<string, number>();
 
@@ -133,8 +135,14 @@ export class CollaborationClient {
   endGesture(gestureId: string): void {
     const entries = this.#unsent();
     const last = entries[entries.length - 1];
-    if (last?.gesture?.id === gestureId) last.gesture = { id: gestureId, final: true };
-    this.flush();
+    if (last?.gesture?.id === gestureId) {
+      last.gesture = { id: gestureId, final: true };
+      this.flush();
+    } else if (this.#openGesture === gestureId) {
+      // Tous les lots du geste sont partis : on signale seulement sa fin.
+      this.#openGesture = undefined;
+      this.#send({ type: 'GESTURE_END', gestureId });
+    }
   }
 
   /** Envoie immédiatement les opérations en file, en un seul lot. */
@@ -145,6 +153,7 @@ export class CollaborationClient {
     const operations = compactOperations(entries.flatMap((entry) => entry.operations));
     const gesture = entries[entries.length - 1]?.gesture;
     for (const entry of entries) entry.batchId = batchId;
+    this.#openGesture = gesture && !gesture.final ? gesture.id : undefined;
     this.#send({ type: 'OPS', batchId, operations, ...(gesture ? { gesture } : {}) });
   }
 

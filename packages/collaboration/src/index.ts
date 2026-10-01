@@ -9,3 +9,10 @@ export {
 export { compactOperations, touchedIds } from './compact';
 export { CollaborationHub, type HubConnection, type HubLogger } from './hub';
 export { InMemoryPubSub, type PubSub, type Unsubscribe } from './pubsub';
+export {
+  type BoardCommit,
+  type BoardStore,
+  type JournalEntry,
+  MemoryBoardStore,
+  type StoredBoard,
+} from './store';

@@ -54,6 +54,12 @@ export const OperationsMessageSchema = z.object({
   gesture: GestureSchema.optional(),
 });
 
+/** Fin d'un geste dont tous les lots ont déjà été envoyés. */
+export const GestureEndSchema = z.object({
+  type: z.literal('GESTURE_END'),
+  gestureId: z.string().min(1).max(64),
+});
+
 /** Demande de l'état complet du board (après un rejet, par exemple). */
 export const SyncRequestSchema = z.object({ type: z.literal('SYNC_REQUEST') });
 
@@ -61,6 +67,7 @@ export const ClientSessionMessageSchema = z.discriminatedUnion('type', [
   JoinMessageSchema,
   LeaveMessageSchema,
   OperationsMessageSchema,
+  GestureEndSchema,
   SyncRequestSchema,
 ]);
 export type ClientSessionMessage = z.infer<typeof ClientSessionMessageSchema>;

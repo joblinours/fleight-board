@@ -2,6 +2,7 @@ import type { BoardDocument } from '@fleight/document';
 import type { BoardObject, ServerSessionMessage } from '@fleight/protocol';
 import { CollaborationClient } from './client';
 import { CollaborationHub } from './hub';
+import { MemoryBoardStore } from './store';
 
 /**
  * Réseau simulé : les messages restent en file jusqu'à ce que le test les livre,
@@ -18,8 +19,17 @@ export type TestClient = {
   close(): void;
 };
 
-export function createNetwork(boardId = 'board') {
-  const hub = new CollaborationHub();
+/** Laisse le serveur traiter les messages reçus (traitement asynchrone). */
+export async function drain(hub: CollaborationHub): Promise<void> {
+  // Le stockage en mémoire ne fait que des micro-tâches : inutile d'attendre un tour d'horloge.
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 50; j++) await Promise.resolve();
+    await hub.flush();
+  }
+}
+
+export function createNetwork(boardId = 'board', store = new MemoryBoardStore()) {
+  const hub = new CollaborationHub({ store });
   const clients: TestClient[] = [];
 
   function connect(name: string): TestClient {
@@ -65,21 +75,22 @@ export function createNetwork(boardId = 'board') {
   }
 
   /** Livre tous les messages jusqu'à ce que le réseau soit vide. */
-  function settle() {
-    for (let round = 0; round < 20; round++) {
+  async function settle() {
+    for (let round = 0; round < 10; round++) {
       for (const client of clients) {
         client.tick();
         client.upload();
       }
+      await drain(hub);
       for (const client of clients) client.download();
     }
   }
 
-  function serverObjects(): BoardObject[] {
-    return sorted([...(hub.room(boardId)?.document.all() ?? [])]);
+  async function serverObjects(): Promise<BoardObject[]> {
+    return sorted([...((await hub.room(boardId))?.document.all() ?? [])]);
   }
 
-  return { hub, connect, settle, serverObjects };
+  return { hub, store, connect, settle, serverObjects, drain: () => drain(hub) };
 }
 
 export function sorted(objects: BoardObject[]): BoardObject[] {

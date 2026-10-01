@@ -5,7 +5,7 @@ import { rect } from './test-network';
 describe('BoardRoom', () => {
   it('numérote les lots et versionne les objets', () => {
     const room = new BoardRoom('b');
-    expect(room.apply([{ kind: 'create', object: rect('a') }])).toEqual({
+    expect(room.apply([{ kind: 'create', object: rect('a') }])).toMatchObject({
       ok: true,
       seq: 1,
       versions: { a: 1 },

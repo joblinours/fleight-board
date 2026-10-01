@@ -184,11 +184,16 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 
 ### M0.6 — Persistance
 
-- [ ] Schéma Drizzle : `boards`, `objects`, `operations`, `snapshots`
-- [ ] Écriture transactionnelle opération + état courant
-- [ ] Rechargement d'un board
+- [x] Schéma Drizzle : `boards`, `objects`, `operations`, `snapshots` ; migrations SQL versionnées (`apps/api/drizzle`), appliquées au démarrage
+- [x] Écriture transactionnelle état courant + journal (`PostgresBoardStore`) ; un lot n'est confirmé (`ACK`) et diffusé qu'une fois enregistré
+- [x] Journal : une entrée par lot hors geste, **une seule entrée par geste** (effet net, au lot final, à `GESTURE_END` ou au départ de l'auteur)
+- [x] Copie complète du board tous les 500 lots (`snapshots`)
+- [x] Rechargement d'un board ; déchargement de la mémoire quand le dernier participant part
+- [x] Échec d'enregistrement : board déchargé, participants déconnectés ; à leur retour, ils retrouvent l'état réellement enregistré
+- [x] Tests d'intégration sur un vrai PostgreSQL (service PostgreSQL dans la CI)
 
 **Critère** : redémarrer l'API ne perd rien.
+→ **Validé** : test d'intégration (lot créé via WebSocket, arrêt de l'API, nouvelle instance : état et versions restaurés) et essai dans le navigateur (diagramme d'exemple + déplacement, redémarrage de l'API, rechargement : tout est là).
 
 ### M0.7 — Locks
 
@@ -340,6 +345,7 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 | Date | Décision |
 |---|---|
 | 2026-10-01 | Plan validé ; décisions D1 à D22 actées |
+| 2026-10-01 | M0.6 : `ACK` et diffusion après l'enregistrement (durabilité avant latence ; quelques ms en local). Nouveau message `GESTURE_END` quand tous les lots d'un geste sont déjà partis au relâchement |
 | 2026-10-01 | M0.5 : les gestes ne passent pas par des messages éphémères séparés mais par des lots d'opérations réels, regroupés à ~30 Hz et rattachés à un geste (`final` au pointer up) : l'état reste convergent pour un participant qui arrive en cours de geste, et la journalisation (M0.6) pourra ne conserver que l'effet net de chaque geste |
 | 2026-10-01 | M0.5 : sans persistance (M0.6), l'état d'un board vit en mémoire du serveur |
 | 2026-10-01 | M0.4 : un connecteur s'accroche à l'un des 4 ancrages (haut, droite, bas, gauche) ; supprimer un objet transforme les extrémités accrochées en points libres plutôt que de supprimer les connecteurs ; les points d'un trait sont relatifs à son coin (déplacer ne recalcule pas le tracé) |
