@@ -39,6 +39,8 @@ export {
   ClientSessionMessageSchema,
   GestureEndSchema,
   GestureSchema,
+  type Intent,
+  IntentSchema,
   JoinedMessageSchema,
   JoinMessageSchema,
   LeaveMessageSchema,

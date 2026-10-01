@@ -20,3 +20,4 @@ export {
   type Segment,
 } from './geometry';
 export type { DocumentOperation, ObjectPatch } from './operations';
+export { equal, type RevertOptions, type RevertResult, UndoHistory } from './undo-history';

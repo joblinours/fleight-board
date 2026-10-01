@@ -73,6 +73,7 @@ describe.skipIf(!url)('PostgresBoardStore', () => {
           seq: 2,
           actor: 'bob',
           gestureId: 'g1',
+          intent: 'undo',
           operations: [{ kind: 'update', id: 'a', patch: { label: 'Firewall' } }],
         },
       ],
@@ -89,9 +90,11 @@ describe.skipIf(!url)('PostgresBoardStore', () => {
       .from(operations)
       .where(eq(operations.boardId, boardId))
       .orderBy(operations.seq);
-    expect(journal.map(({ seq, actor, gestureId }) => ({ seq, actor, gestureId }))).toEqual([
-      { seq: 1, actor: 'alice', gestureId: null },
-      { seq: 2, actor: 'bob', gestureId: 'g1' },
+    expect(
+      journal.map(({ seq, actor, gestureId, intent }) => ({ seq, actor, gestureId, intent })),
+    ).toEqual([
+      { seq: 1, actor: 'alice', gestureId: null, intent: null },
+      { seq: 2, actor: 'bob', gestureId: 'g1', intent: 'undo' },
     ]);
   });
 

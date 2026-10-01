@@ -1,6 +1,7 @@
 import { BoardDocument } from '@fleight/document';
 import {
   type ClientSessionMessage,
+  type Intent,
   type Operation,
   type Participant,
   PROTOCOL_VERSION,
@@ -54,6 +55,7 @@ type PendingEntry = {
   /** Lot dans lequel l'entrée a été envoyée (absent : encore en file). */
   batchId?: string;
   gesture?: Gesture;
+  intent?: Intent;
 };
 
 /**
@@ -133,13 +135,18 @@ export class CollaborationClient {
    * Applique des opérations locales et les met en file d'envoi.
    * `gesture` regroupe les lots d'un même geste (glisser, tracer).
    */
-  applyLocal(operations: Operation[], gesture?: Gesture): void {
+  applyLocal(operations: Operation[], gesture?: Gesture, intent?: Intent): void {
     if (!operations.length) return;
     const inverse = this.document.apply(operations);
     // Un lot ne mélange pas deux gestes : on envoie la file au changement de geste.
     const queued = this.#unsent();
     if (queued.length && queued[queued.length - 1]?.gesture?.id !== gesture?.id) this.flush();
-    this.#pending.push({ operations, inverse, ...(gesture ? { gesture } : {}) });
+    this.#pending.push({
+      operations,
+      inverse,
+      ...(gesture ? { gesture } : {}),
+      ...(intent ? { intent } : {}),
+    });
     if (!gesture || gesture.final) this.flush();
     else this.#scheduleFlush();
   }
@@ -165,9 +172,17 @@ export class CollaborationClient {
     const batchId = createId();
     const operations = compactOperations(entries.flatMap((entry) => entry.operations));
     const gesture = entries[entries.length - 1]?.gesture;
+    // Une annulation est envoyée seule (sans geste) : son lot porte son intention.
+    const intent = entries.length === 1 ? entries[0]?.intent : undefined;
     for (const entry of entries) entry.batchId = batchId;
     this.#openGesture = gesture && !gesture.final ? gesture.id : undefined;
-    this.#send({ type: 'OPS', batchId, operations, ...(gesture ? { gesture } : {}) });
+    this.#send({
+      type: 'OPS',
+      batchId,
+      operations,
+      ...(gesture ? { gesture } : {}),
+      ...(intent ? { intent } : {}),
+    });
   }
 
   /** Verrouille des objets avant de les modifier (renouvelé jusqu'à `unlock`). */

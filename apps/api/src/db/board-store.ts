@@ -79,6 +79,7 @@ export class PostgresBoardStore implements BoardStore {
             seq: entry.seq,
             actor: entry.actor,
             gestureId: entry.gestureId ?? null,
+            intent: entry.intent ?? null,
             operations: entry.operations,
           })),
         );

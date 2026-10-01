@@ -29,6 +29,10 @@ export const GestureSchema = z.object({
   final: z.boolean(),
 });
 
+/** Nature d'un lot : action normale, annulation ou rétablissement (journalisé pour l'audit). */
+export const IntentSchema = z.enum(['undo', 'redo']);
+export type Intent = z.infer<typeof IntentSchema>;
+
 export const ParticipantSchema = z.object({
   connectionId: z.string(),
   name: z.string(),
@@ -52,6 +56,7 @@ export const OperationsMessageSchema = z.object({
   batchId: z.string().min(1).max(64),
   operations: z.array(OperationSchema).min(1).max(MAX_OPERATIONS_PER_BATCH),
   gesture: GestureSchema.optional(),
+  intent: IntentSchema.optional(),
 });
 
 /** Fin d'un geste dont tous les lots ont déjà été envoyés. */
@@ -139,6 +144,7 @@ export const RemoteOperationsMessageSchema = z.object({
   operations: z.array(OperationSchema),
   versions: z.record(z.string(), z.number().int().nonnegative()),
   gesture: GestureSchema.optional(),
+  intent: IntentSchema.optional(),
 });
 
 export const AckMessageSchema = z.object({

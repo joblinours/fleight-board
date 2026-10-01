@@ -208,10 +208,13 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 
 ### M0.8 — Undo individuel
 
-- [ ] Pile par utilisateur, opération `undo` côté serveur
-- [ ] Règles D13
+- [x] Historique **individuel** côté client (`UndoHistory`, `@fleight/document`) : une entrée par geste ou commande, état avant/après de chaque objet touché ; seules les actions locales y entrent ; rétablissement (redo) ; 200 entrées
+- [x] Règles D13 : seules les propriétés encore égales à ce que l'utilisateur a écrit sont restaurées ; objet supprimé entre-temps → ignoré + notification ; objet verrouillé par un autre → ignoré ; annuler une suppression restaure aussi les connecteurs détachés
+- [x] L'annulation passe par les opérations normales (verrous, persistance, diffusion) et est **journalisée** avec son intention (`undo` / `redo`, colonne `intent`, migration `0001`)
+- [x] Éditeur : Ctrl/⌘+Z, Ctrl/⌘+Maj+Z, Ctrl+Y, boutons Annuler / Rétablir, message en cas d'annulation partielle
 
 **Critère** : scénario Alice/Bob du README validé par un test automatisé.
+→ **Validé** : test unitaire (`UndoHistory`) et test de collaboration à travers le serveur (convergence des deux clients, journal `undo` puis `redo`), plus essai dans deux navigateurs : Alice déplace le Router, Bob le renomme, Alice fait Ctrl+Z → le Router revient à sa place et garde le nom donné par Bob.
 
 ### M0.9 — Reconnexion
 
@@ -351,6 +354,7 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 | Date | Décision |
 |---|---|
 | 2026-10-01 | Plan validé ; décisions D1 à D22 actées |
+| 2026-10-01 | M0.8 : l'historique vit côté client pendant la session ; sa reconstruction depuis le journal au rechargement attend l'authentification (M1.1), car l'acteur journalisé est encore une connexion et non un utilisateur |
 | 2026-10-01 | M0.7 : les verrous ne sont pas persistés (état éphémère en mémoire du serveur) ; le client verrouille de façon optimiste — en cas de course, le serveur refuse le lot (`LOCKED`) et le client est resynchronisé |
 | 2026-10-01 | M0.6 : `ACK` et diffusion après l'enregistrement (durabilité avant latence ; quelques ms en local). Nouveau message `GESTURE_END` quand tous les lots d'un geste sont déjà partis au relâchement |
 | 2026-10-01 | M0.5 : les gestes ne passent pas par des messages éphémères séparés mais par des lots d'opérations réels, regroupés à ~30 Hz et rattachés à un geste (`final` au pointer up) : l'état reste convergent pour un participant qui arrive en cours de geste, et la journalisation (M0.6) pourra ne conserver que l'effet net de chaque geste |

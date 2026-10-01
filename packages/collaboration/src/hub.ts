@@ -265,7 +265,12 @@ export class CollaborationHub {
             gesture.seq = result.seq;
             if (message.gesture.final) journal.push(...closeGesture());
           } else {
-            journal.push({ seq: result.seq, actor: connectionId, operations: message.operations });
+            journal.push({
+              seq: result.seq,
+              actor: connectionId,
+              operations: message.operations,
+              ...(message.intent ? { intent: message.intent } : {}),
+            });
           }
 
           this.#persist(
@@ -287,6 +292,7 @@ export class CollaborationHub {
                   operations: message.operations,
                   versions: result.versions,
                   ...(message.gesture ? { gesture: message.gesture } : {}),
+                  ...(message.intent ? { intent: message.intent } : {}),
                 },
                 exclude: connectionId,
               });
