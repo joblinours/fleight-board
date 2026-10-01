@@ -37,6 +37,7 @@ export {
   BoardIdSchema,
   type ClientSessionMessage,
   ClientSessionMessageSchema,
+  GestureEndSchema,
   GestureSchema,
   JoinedMessageSchema,
   JoinMessageSchema,

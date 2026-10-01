@@ -5,34 +5,34 @@ import { createRandom } from './test-random';
 const objects = (client: TestClient) => sorted([...client.document.all()]);
 
 describe('session', () => {
-  it('un participant qui rejoint reçoit l’état et la liste des participants', () => {
+  it('un participant qui rejoint reçoit l’état et la liste des participants', async () => {
     const network = createNetwork();
     const alice = network.connect('alice');
-    network.settle();
+    await network.settle();
     alice.client.applyLocal([{ kind: 'create', object: rect('a') }]);
-    network.settle();
+    await network.settle();
 
     const bob = network.connect('bob');
-    network.settle();
+    await network.settle();
 
     expect(objects(bob)).toEqual([rect('a')]);
     expect(bob.client.status).toBe('joined');
     expect(alice.client.participants.map(({ name }) => name)).toEqual(['alice', 'bob']);
 
     bob.close();
-    network.settle();
+    await network.settle();
     expect(alice.client.participants.map(({ name }) => name)).toEqual(['alice']);
   });
 
-  it('diffuse les modifications et confirme les lots', () => {
+  it('diffuse les modifications et confirme les lots', async () => {
     const network = createNetwork();
     const alice = network.connect('alice');
     const bob = network.connect('bob');
-    network.settle();
+    await network.settle();
 
     alice.client.applyLocal([{ kind: 'create', object: rect('a') }]);
     expect(alice.client.pendingCount).toBe(1);
-    network.settle();
+    await network.settle();
 
     expect(objects(bob)).toEqual([rect('a')]);
     expect(alice.client.pendingCount).toBe(0);
@@ -42,70 +42,74 @@ describe('session', () => {
 });
 
 describe('modifications concurrentes', () => {
-  function twoClientsWithRect() {
+  async function twoClientsWithRect() {
     const network = createNetwork();
     const alice = network.connect('alice');
     const bob = network.connect('bob');
-    network.settle();
+    await network.settle();
     alice.client.applyLocal([{ kind: 'create', object: rect('a') }]);
-    network.settle();
+    await network.settle();
     return { network, alice, bob };
   }
 
   for (const first of ['alice', 'bob'] as const) {
-    it(`converge sur un même champ quand ${first} arrive en premier au serveur`, () => {
-      const { network, alice, bob } = twoClientsWithRect();
+    it(`converge sur un même champ quand ${first} arrive en premier au serveur`, async () => {
+      const { network, alice, bob } = await twoClientsWithRect();
       alice.client.applyLocal([{ kind: 'update', id: 'a', patch: { x: 10 } }]);
       bob.client.applyLocal([{ kind: 'update', id: 'a', patch: { x: 20 } }]);
 
       // Le serveur reçoit les deux lots avant que quiconque ne reçoive quoi que ce soit.
       const [winnerLast, loserFirst] = first === 'alice' ? [bob, alice] : [alice, bob];
       loserFirst.upload();
+      await network.drain();
       winnerLast.upload();
+      await network.drain();
       alice.download();
       bob.download();
-      network.settle();
+      await network.settle();
 
       const expected = first === 'alice' ? 20 : 10;
-      expect(network.serverObjects()[0]).toMatchObject({ x: expected });
-      expect(objects(alice)).toEqual(network.serverObjects());
-      expect(objects(bob)).toEqual(network.serverObjects());
+      expect((await network.serverObjects())[0]).toMatchObject({ x: expected });
+      expect(objects(alice)).toEqual(await network.serverObjects());
+      expect(objects(bob)).toEqual(await network.serverObjects());
     });
   }
 
-  it('un lot local en attente reste visible malgré une modification distante antérieure', () => {
-    const { network, alice, bob } = twoClientsWithRect();
+  it('un lot local en attente reste visible malgré une modification distante antérieure', async () => {
+    const { network, alice, bob } = await twoClientsWithRect();
     bob.client.applyLocal([{ kind: 'update', id: 'a', patch: { x: 20 } }]);
     bob.upload();
+    await network.drain();
     alice.client.applyLocal([{ kind: 'update', id: 'a', patch: { x: 10 } }]);
     // Alice reçoit la modification de Bob avant l'accusé de réception de la sienne.
     alice.download();
 
     expect(alice.document.get('a')).toMatchObject({ x: 10 });
-    network.settle();
-    expect(objects(alice)).toEqual(network.serverObjects());
-    expect(objects(bob)).toEqual(network.serverObjects());
+    await network.settle();
+    expect(objects(alice)).toEqual(await network.serverObjects());
+    expect(objects(bob)).toEqual(await network.serverObjects());
   });
 
-  it('resynchronise un client dont le lot est refusé (objet supprimé entre-temps)', () => {
-    const { network, alice, bob } = twoClientsWithRect();
+  it('resynchronise un client dont le lot est refusé (objet supprimé entre-temps)', async () => {
+    const { network, alice, bob } = await twoClientsWithRect();
     bob.client.applyLocal([{ kind: 'update', id: 'a', patch: { label: 'Router' } }]);
     alice.client.applyLocal([{ kind: 'delete', id: 'a' }]);
     alice.upload();
+    await network.drain();
     bob.upload();
-    network.settle();
+    await network.settle();
 
-    expect(network.serverObjects()).toEqual([]);
+    expect(await network.serverObjects()).toEqual([]);
     expect(objects(alice)).toEqual([]);
     expect(objects(bob)).toEqual([]);
   });
 
-  it('regroupe les lots d’un geste et envoie le dernier marqué final', () => {
+  it('regroupe les lots d’un geste et envoie le dernier marqué final', async () => {
     const network = createNetwork();
     const alice = network.connect('alice');
-    network.settle();
+    await network.settle();
     alice.client.applyLocal([{ kind: 'create', object: rect('a') }]);
-    network.settle();
+    await network.settle();
 
     const gesture = { id: 'g1', final: false };
     for (let x = 1; x <= 5; x++) {
@@ -125,17 +129,17 @@ describe('modifications concurrentes', () => {
     expect(alice.outgoing[1]).toMatchObject({ gesture: { id: 'g1', final: true } });
   });
 
-  it('converge avec 3 clients et des ordres de livraison aléatoires', () => {
+  it('converge avec 3 clients et des ordres de livraison aléatoires', async () => {
     for (let seed = 1; seed <= 40; seed++) {
       const random = createRandom(seed);
       const network = createNetwork();
       const clients = ['alice', 'bob', 'carol'].map((name) => network.connect(name));
-      network.settle();
+      await network.settle();
       const ids = ['a', 'b', 'c', 'd'];
       clients[0]?.client.applyLocal(
         ids.map((id) => ({ kind: 'create' as const, object: rect(id) })),
       );
-      network.settle();
+      await network.settle();
 
       for (let step = 0; step < 60; step++) {
         const client = clients[Math.floor(random() * clients.length)];
@@ -157,13 +161,14 @@ describe('modifications concurrentes', () => {
           client.client.applyLocal([{ kind: 'create', object: rect(`n${seed}-${step}`) }]);
         } else if (action < 0.88) {
           client.upload();
+          await network.drain();
         } else {
           client.download();
         }
       }
-      network.settle();
+      await network.settle();
 
-      const server = network.serverObjects();
+      const server = await network.serverObjects();
       for (const client of clients) {
         expect(objects(client), `graine ${seed}, ${client.name}`).toEqual(server);
         expect(client.client.pendingCount).toBe(0);

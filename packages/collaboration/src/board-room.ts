@@ -3,7 +3,15 @@ import type { BoardObject, Operation, Snapshot } from '@fleight/protocol';
 import { touchedIds } from './compact';
 
 export type ApplyResult =
-  | { ok: true; seq: number; versions: Record<string, number> }
+  | {
+      ok: true;
+      seq: number;
+      versions: Record<string, number>;
+      /** Objets créés ou modifiés, avec leur nouvelle version (à persister). */
+      upserts: Array<{ object: BoardObject; version: number }>;
+      /** Objets supprimés. */
+      deletes: string[];
+    }
   | { ok: false; message: string };
 
 /**
@@ -44,17 +52,22 @@ export class BoardRoom {
     }
     this.#seq += 1;
     const versions: Record<string, number> = {};
+    const upserts: Array<{ object: BoardObject; version: number }> = [];
+    const deletes: string[] = [];
     for (const id of touchedIds(operations)) {
-      if (this.document.has(id)) {
+      const object = this.document.get(id);
+      if (object) {
         const version = (this.#versions.get(id) ?? 0) + 1;
         this.#versions.set(id, version);
         versions[id] = version;
+        upserts.push({ object, version });
       } else {
         this.#versions.delete(id);
         versions[id] = 0;
+        deletes.push(id);
       }
     }
-    return { ok: true, seq: this.#seq, versions };
+    return { ok: true, seq: this.#seq, versions, upserts, deletes };
   }
 
   snapshot(): Snapshot {

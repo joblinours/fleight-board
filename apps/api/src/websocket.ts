@@ -12,6 +12,7 @@ import type { FastifyInstance } from 'fastify';
 export const CloseCode = {
   InvalidMessage: 4400,
   UnsupportedProtocolVersion: 4426,
+  ServerError: 4500,
 } as const;
 
 export async function registerWebSocket(app: FastifyInstance, { hub }: { hub: CollaborationHub }) {
@@ -19,9 +20,14 @@ export async function registerWebSocket(app: FastifyInstance, { hub }: { hub: Co
     const connectionId = createId();
     const log = request.log.child({ connectionId });
     let greeted = false;
-    const session = hub.open(connectionId, (message) => {
-      if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
-    });
+    const session = hub.open(
+      connectionId,
+      (message) => {
+        if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
+      },
+      // Échec d'enregistrement : le client se reconnectera et rechargera l'état.
+      () => socket.close(CloseCode.ServerError, 'STORAGE_ERROR'),
+    );
     socket.on('close', () => session.close());
 
     const fail = (error: ServerError, closeCode: number) => {
