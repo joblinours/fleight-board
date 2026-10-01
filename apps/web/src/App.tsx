@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BenchPage } from './bench/BenchPage';
 import { HomePage } from './HomePage';
+import { InkPage } from './ink/InkPage';
 
 function currentRoute(): string {
   return window.location.hash.replace(/^#/, '') || '/';
@@ -15,5 +16,12 @@ export function App() {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
-  return route === '/bench' ? <BenchPage /> : <HomePage />;
+  switch (route) {
+    case '/bench':
+      return <BenchPage />;
+    case '/ink':
+      return <InkPage />;
+    default:
+      return <HomePage />;
+  }
 }

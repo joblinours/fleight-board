@@ -14,6 +14,7 @@ function createContext() {
   return {
     setTransform: vi.fn(),
     fillRect: vi.fn(),
+    clearRect: vi.fn(),
     strokeRect: vi.fn(),
     beginPath: vi.fn(),
     moveTo: vi.fn(),
@@ -26,9 +27,10 @@ function createContext() {
   };
 }
 
-function setup() {
+function setup(transparent = false) {
   const ctx = createContext();
-  const canvas = { width: 0, height: 0, getContext: () => ctx } as unknown as HTMLCanvasElement;
+  const getContext = vi.fn(() => ctx);
+  const canvas = { width: 0, height: 0, getContext } as unknown as HTMLCanvasElement;
   const scene = new Scene();
   const camera = new Camera();
   const frames: Array<() => void> = [];
@@ -38,6 +40,7 @@ function setup() {
     scene,
     camera,
     grid: false,
+    transparent,
     painters: { rect: (_ctx, { id }) => painted.push(id) },
     scheduleFrame: (callback) => frames.push(callback),
     now: () => 0,
@@ -45,7 +48,7 @@ function setup() {
   const flush = () => {
     for (const frame of frames.splice(0)) frame();
   };
-  return { ctx, canvas, scene, camera, renderer, painted, frames, flush };
+  return { ctx, canvas, getContext, scene, camera, renderer, painted, frames, flush };
 }
 
 describe('CanvasRenderer', () => {
@@ -97,6 +100,16 @@ describe('CanvasRenderer', () => {
     flush();
 
     expect(ctx.strokeRect).toHaveBeenCalledWith(0, 0, 10, 10);
+  });
+
+  it('efface au lieu de peindre le fond quand il est transparent', () => {
+    const { ctx, getContext, renderer } = setup(true);
+    renderer.resize(100, 50);
+    renderer.render();
+
+    expect(getContext).toHaveBeenCalledWith('2d', { alpha: true });
+    expect(ctx.clearRect).toHaveBeenCalledWith(0, 0, 100, 50);
+    expect(ctx.fillRect).not.toHaveBeenCalled();
   });
 
   it('ne rend plus rien après dispose', () => {

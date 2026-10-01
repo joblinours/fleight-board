@@ -36,7 +36,10 @@ export type RendererOptions<T extends SceneItem> = {
   scene: Scene<T>;
   camera: Camera;
   painters: Record<string, ItemPainter<T>>;
+  /** Couleur de fond ; ignorée si `transparent`. */
   background?: string;
+  /** Canvas transparent, à superposer à un autre (calque du trait en cours). */
+  transparent?: boolean;
   grid?: GridOptions | false;
   /** Planification d'une frame ; injectable pour les tests. */
   scheduleFrame?: (callback: () => void) => void;
@@ -59,7 +62,7 @@ export class CanvasRenderer<T extends SceneItem = SceneItem> {
   readonly #scene: Scene<T>;
   readonly #camera: Camera;
   readonly #painters: Record<string, ItemPainter<T>>;
-  readonly #background: string;
+  readonly #background: string | null;
   readonly #grid: GridOptions | false;
   readonly #scheduleFrame: (callback: () => void) => void;
   readonly #now: () => number;
@@ -74,7 +77,8 @@ export class CanvasRenderer<T extends SceneItem = SceneItem> {
   #stats: RenderStats = { renderMs: 0, drawnItems: 0, frames: 0 };
 
   constructor(options: RendererOptions<T>) {
-    const ctx = options.canvas.getContext('2d', { alpha: false });
+    const transparent = options.transparent ?? false;
+    const ctx = options.canvas.getContext('2d', { alpha: transparent });
     if (!ctx) throw new Error('Canvas 2D indisponible');
 
     this.#canvas = options.canvas;
@@ -82,7 +86,7 @@ export class CanvasRenderer<T extends SceneItem = SceneItem> {
     this.#scene = options.scene;
     this.#camera = options.camera;
     this.#painters = options.painters;
-    this.#background = options.background ?? '#ffffff';
+    this.#background = transparent ? null : (options.background ?? '#ffffff');
     this.#grid = options.grid === undefined ? DEFAULT_GRID : options.grid;
     this.#scheduleFrame = options.scheduleFrame ?? ((callback) => requestAnimationFrame(callback));
     this.#now = options.now ?? (() => performance.now());
@@ -127,8 +131,12 @@ export class CanvasRenderer<T extends SceneItem = SceneItem> {
     const ratio = this.#pixelRatio;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = this.#background;
-    ctx.fillRect(0, 0, this.#canvas.width, this.#canvas.height);
+    if (this.#background === null) {
+      ctx.clearRect(0, 0, this.#canvas.width, this.#canvas.height);
+    } else {
+      ctx.fillStyle = this.#background;
+      ctx.fillRect(0, 0, this.#canvas.width, this.#canvas.height);
+    }
 
     const view: ViewState = {
       zoom: camera.zoom,
