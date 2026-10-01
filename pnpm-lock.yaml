@@ -57,6 +57,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@fleight/canvas':
+        specifier: workspace:*
+        version: link:../../packages/canvas
       '@fleight/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -80,7 +83,15 @@ importers:
         specifier: ^8.3.2
         version: 8.3.2(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)
 
-  packages/canvas: {}
+  packages/canvas:
+    dependencies:
+      rbush:
+        specifier: ^4.0.1
+        version: 4.0.1
+    devDependencies:
+      '@types/rbush':
+        specifier: ^4.0.0
+        version: 4.0.0
 
   packages/collaboration: {}
 
@@ -478,6 +489,9 @@ packages:
 
   '@types/node@26.6.3':
     resolution: {integrity: sha512-dsqMQQoeTLqu9wynDD00q573mNzso3IdQOAfHRJqLCcmCFPoGo9A1bDpUcv/9tnKpErQWv9uKeGfl37EIS02Yg==}
+
+  '@types/rbush@4.0.0':
+    resolution: {integrity: sha512-+N+2H39P8X+Hy1I5mC6awlTX54k3FhiUmvt7HWzGJZvF+syUAAxP/stwppS8JE84YHqFgRMv6fCy31202CMFxQ==}
 
   '@types/react-dom@19.3.0':
     resolution: {integrity: sha512-ZI7bU42mZXXKHn/qNLEw2IrbiINU7X5+vfgdixBHkCNpYWXjKgfQ/P+uyGb5CjOLB9UcnTeg3rylQtV2hym44Q==}
@@ -888,6 +902,12 @@ packages:
 
   quick-format-unescaped@4.0.4:
     resolution: {integrity: sha512-tYC1Q1hgyRuHgloV/YXs2w15unPVh8qfu/qCTfhTYamaw7fyhumKa2yGpdSo87vY32rIclj+4fWYQXUMs9EHvg==}
+
+  quickselect@3.0.0:
+    resolution: {integrity: sha512-XdjUArbK4Bm5fLLvlm5KpTFOiOThgfWWI4axAZDWg4E/0mKdZyI9tNEfds27qCi1ze/vwTR16kvmmGhRra3c2g==}
+
+  rbush@4.0.1:
+    resolution: {integrity: sha512-IP0UpfeWQujYC8Jg162rMNc01Rf0gWMMAb2Uxus/Q0qOFw4lCcq6ZnQEZwUoJqWyUGJ9th7JjwI4yIWo+uvoAQ==}
 
   react-dom@19.3.0:
     resolution: {integrity: sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q==}
@@ -1363,6 +1383,8 @@ snapshots:
     dependencies:
       undici-types: 8.9.0
 
+  '@types/rbush@4.0.0': {}
+
   '@types/react-dom@19.3.0(@types/react@19.3.0)':
     dependencies:
       '@types/react': 19.3.0
@@ -1705,6 +1727,12 @@ snapshots:
   process-warning@5.1.0: {}
 
   quick-format-unescaped@4.0.4: {}
+
+  quickselect@3.0.0: {}
+
+  rbush@4.0.1:
+    dependencies:
+      quickselect: 3.0.0
 
   react-dom@19.3.0(react@19.3.0):
     dependencies:

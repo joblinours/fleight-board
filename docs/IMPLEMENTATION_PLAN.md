@@ -128,13 +128,14 @@ Client                         Serveur
 
 ### M0.2 — Moteur de rendu
 
-- [ ] Caméra (zoom, pan) et conversion écran ↔ monde
-- [ ] Graphe de scène, rendu Canvas 2D, gestion du `devicePixelRatio`
-- [ ] Index spatial (`rbush`) : culling du viewport et hit-testing
-- [ ] Rendu à la demande (dirty flag), pas de boucle permanente
-- [ ] Banc de performance : 5 000 objets
+- [x] Caméra (zoom, pan) et conversion écran ↔ monde
+- [x] Graphe de scène, rendu Canvas 2D, gestion du `devicePixelRatio`
+- [x] Index spatial (`rbush`) : culling du viewport et hit-testing
+- [x] Rendu à la demande (dirty flag), pas de boucle permanente
+- [x] Banc de performance : 5 000 objets (page `#/bench`, benchmark scripté de 6 s)
 
 **Critère** : 60 fps en pan/zoom avec 5 000 objets sur desktop et iPad Air.
+→ _À mesurer sur matériel réel (desktop avec GPU + iPad Air). En Chromium headless sans GPU : 47 fps moyen à 5 000 objets, limité par la rastérisation logicielle des ellipses._
 
 ### M0.3 — Entrées et Apple Pencil
 
@@ -325,4 +326,5 @@ Client                         Serveur
 | Date | Décision |
 |---|---|
 | 2026-10-01 | Plan validé ; décisions D1 à D22 actées |
+| 2026-10-01 | M0.2 : niveau de détail — une forme de moins de 8 px à l'écran est dessinée en un simple aplat. Si les mesures sur iPad sont insuffisantes, prochaine étape : cache bitmap des objets statiques pendant le pan |
 | 2026-10-01 | M0.1 : les packages internes sont consommés directement en TypeScript (pas de build) ; le bundle de production de l'API sera traité en M1.10 |

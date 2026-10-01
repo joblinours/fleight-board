@@ -46,3 +46,33 @@ describe('Camera', () => {
     expect(after.y - before.y).toBeCloseTo(-20);
   });
 });
+
+describe('Camera.visibleBounds', () => {
+  it('retourne la zone du monde visible', () => {
+    const camera = new Camera();
+    camera.offset = { x: 100, y: 50 };
+    camera.zoom = 2;
+
+    expect(camera.visibleBounds(800, 600)).toEqual({
+      minX: 100,
+      minY: 50,
+      maxX: 500,
+      maxY: 350,
+    });
+  });
+});
+
+describe('Camera.fitBounds', () => {
+  it('centre le contenu et le fait tenir dans le viewport', () => {
+    const camera = new Camera();
+    const content = { minX: 0, minY: 0, maxX: 1000, maxY: 500 };
+
+    camera.fitBounds(content, 800, 600, 0);
+
+    expect(camera.zoom).toBeCloseTo(0.8);
+    const visible = camera.visibleBounds(800, 600);
+    expect(visible.minX).toBeCloseTo(0);
+    expect(visible.maxX).toBeCloseTo(1000);
+    expect((visible.minY + visible.maxY) / 2).toBeCloseTo(250);
+  });
+});
