@@ -339,6 +339,8 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 - Une branche `feature/*` par jalon (ex. `feature/m0.2-render-engine`).
 - **Une PR vers `dev` dès qu'un jalon Mx.x est fonctionnel.**
 - **Une PR `dev` → `main` à chaque fin de phase**, qui correspond à une release.
+- **Chaque jalon ajoute sa fiche de test** (lien + étapes) dans `apps/web/src/milestones.ts`, affichée sur la page d'accueil.
+- `./scripts/dev.sh` lance l'environnement complet (base, configuration, API, frontend).
 - Le README sur `main` est mis à jour à chaque release ; celui de `dev` au fil des fusions.
 - Chaque jalon nécessitant l'iPad (M0.3, M0.9, M1.11) se termine par une demande de test de ta part.
 

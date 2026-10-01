@@ -34,6 +34,106 @@ body {
   margin: 0;
 }
 
+.home dd.ok {
+  color: #15803d;
+}
+
+.home dd.ko {
+  color: #b91c1c;
+}
+
+.home {
+  -webkit-user-select: text;
+  user-select: text;
+  touch-action: auto;
+  overflow-y: auto;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.home-open {
+  margin: 1.5rem 0;
+}
+
+.home-open label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-weight: 600;
+}
+
+.home-open div {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.home-open input {
+  flex: 1;
+  min-height: 38px;
+  padding: 0 0.6rem;
+  font: inherit;
+}
+
+.home-open button {
+  min-height: 38px;
+  padding: 0 1rem;
+  font: inherit;
+}
+
+.milestones {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.milestones > li {
+  padding: 0.75rem 1rem;
+  border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+  border-radius: 10px;
+}
+
+.milestones p {
+  margin: 0.35rem 0;
+}
+
+.milestones ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.2rem;
+  font-size: 0.92em;
+}
+
+.milestone-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.milestone-head a {
+  margin-left: auto;
+}
+
+.milestone-id {
+  padding: 0.1rem 0.45rem;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 0.8em;
+  font-weight: 700;
+}
+
+.milestone-tags {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.milestone-tags span {
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, CanvasText 10%, transparent);
+  font-size: 0.8em;
+}
+
 .bench {
   position: fixed;
   inset: 0;
