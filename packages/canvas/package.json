@@ -11,6 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fleight/shared": "workspace:*",
+    "perfect-freehand": "^1.2.3",
     "rbush": "^4.0.1"
   },
   "devDependencies": {

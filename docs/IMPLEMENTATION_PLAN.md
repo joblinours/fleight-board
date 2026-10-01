@@ -146,16 +146,17 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 
 ### M0.3 — Entrées et Apple Pencil
 
-- [ ] Pointer Events : distinction `mouse` / `touch` / `pen`
-- [ ] Pression, `getCoalescedEvents()` quand disponible
-- [ ] Palm rejection : contacts tactiles ignorés pendant qu'un stylet est actif
-- [ ] Modes Pencil-only / Touch-only
-- [ ] Pinch-zoom et pan à deux doigts
-- [ ] Désactivation des gestes Safari parasites (double-tap zoom, sélection, menu contextuel)
-- [ ] Outil stylo avec `perfect-freehand`, rendu local immédiat
-- [ ] Page de test dédiée iPad
+- [x] Pointer Events : distinction `mouse` / `touch` / `pen`
+- [x] Pression, `getCoalescedEvents()` quand disponible
+- [x] Palm rejection : contacts tactiles ignorés pendant qu'un stylet est actif (et 500 ms après son levé) ; un trait tactile commencé par la paume est annulé quand la pointe se pose
+- [x] Modes : Auto (le doigt dessine jusqu'à la détection d'un stylet, puis navigue), Pencil seul, Doigt dessine
+- [x] Pinch-zoom et pan à deux doigts ; un second doigt transforme un trait au doigt en pinch
+- [x] Désactivation des gestes Safari parasites (double-tap zoom, gestures, loupe, menu contextuel)
+- [x] Outil stylo avec `perfect-freehand`, rendu local immédiat sur un calque dédié au trait en cours
+- [x] Page de test dédiée iPad (`#/ink`) avec panneau de diagnostic
 
 **Critère** : validé **sur ton iPad Air + Pencil 2** : tracé fluide, sans lag perceptible, pression visible, aucune trace de paume.
+→ **Validé le 2026-10-01 sur iPad Air + Apple Pencil 2 (iPadOS 27, Safari)** : tracé fluide, pression et palm rejection conformes ; fréquence d'échantillonnage du Pencil ≥ 94 Hz.
 
 ### M0.4 — Modèle d'objets
 

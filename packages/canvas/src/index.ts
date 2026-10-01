@@ -8,6 +8,26 @@ export {
   type Point,
 } from './geometry';
 export {
+  outlineToPath,
+  paintStroke,
+  type StrokeItem,
+  type StrokeStyle,
+  strokeBounds,
+  strokeOutline,
+} from './ink/stroke';
+export { StrokeBuilder } from './ink/stroke-builder';
+export { attachDomInput, type DomInputOptions, pointerKind } from './input/dom-input';
+export {
+  type DrawingPointer,
+  type InputHandlers,
+  type InputMode,
+  InputRouter,
+  PEN_COOLDOWN_MS,
+  type PointerInput,
+  type PointerKind,
+  type PointerSample,
+} from './input/input-router';
+export {
   CanvasRenderer,
   type GridOptions,
   gridSpacing,

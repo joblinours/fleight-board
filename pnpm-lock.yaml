@@ -85,6 +85,12 @@ importers:
 
   packages/canvas:
     dependencies:
+      '@fleight/shared':
+        specifier: workspace:*
+        version: link:../shared
+      perfect-freehand:
+        specifier: ^1.2.3
+        version: 1.2.3
       rbush:
         specifier: ^4.0.1
         version: 4.0.1
@@ -868,6 +874,9 @@ packages:
 
   once@1.4.0:
     resolution: {integrity: sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==}
+
+  perfect-freehand@1.2.3:
+    resolution: {integrity: sha512-bHZSfqDHGNlPpgH2yxXgPHlQSPpEbo+qg7li0M78J9vNAi2yjwLeA4x79BEQhX44lEWpCLSFCeRZwpw0niiXPA==}
 
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
@@ -1689,6 +1698,8 @@ snapshots:
   once@1.4.0:
     dependencies:
       wrappy: 1.0.2
+
+  perfect-freehand@1.2.3: {}
 
   picocolors@1.1.1: {}
 

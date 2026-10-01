@@ -40,6 +40,9 @@ export function HomePage() {
         <li>
           <a href="#/bench">Benchmark du rendu</a> — M0.2
         </li>
+        <li>
+          <a href="#/ink">Dessin, stylet et tactile</a> — M0.3
+        </li>
       </ul>
     </main>
   );
