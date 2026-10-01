@@ -89,6 +89,53 @@ describe('SelectTool', () => {
   });
 });
 
+describe('SelectTool — verrous', () => {
+  it('verrouille les objets déplacés', () => {
+    const { context, calls } = createTestContext([rect('a', 0, 0)]);
+    new SelectTool().down(context, at(10, 10), 'mouse');
+    expect(calls.locked).toEqual(['a']);
+  });
+
+  it('ne sélectionne ni ne déplace un objet modifié par un autre participant', () => {
+    const { context, document, selection } = createTestContext([rect('a', 0, 0)], 1, { a: 'Bob' });
+    const tool = new SelectTool();
+    tool.down(context, at(10, 10), 'mouse');
+    tool.move(context, [at(60, 60)]);
+    tool.up();
+
+    expect(selection.size).toBe(0);
+    expect(document.get('a')).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it('ne déplace pas une sélection dont un objet est pris par un autre participant', () => {
+    const locked: Record<string, string> = {};
+    const { context, document, selection } = createTestContext(
+      [rect('a', 0, 0), rect('b', 200, 0)],
+      1,
+      locked,
+    );
+    selection.set(['a', 'b']);
+    locked.b = 'Bob';
+    const tool = new SelectTool();
+    tool.down(context, at(10, 10), 'mouse');
+    tool.move(context, [at(30, 30)]);
+
+    expect(document.get('a')).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it('ne redimensionne pas un objet pris entre-temps par un autre participant', () => {
+    const locked: Record<string, string> = {};
+    const { context, document, selection } = createTestContext([rect('a', 0, 0)], 1, locked);
+    selection.set(['a']);
+    locked.a = 'Bob';
+    const tool = new SelectTool();
+    tool.down(context, at(100, 50), 'mouse');
+    tool.move(context, [at(150, 90)]);
+
+    expect(document.get('a')).toMatchObject({ width: 100, height: 50 });
+  });
+});
+
 describe('ShapeTool', () => {
   it('crée une forme de la taille du cadre tiré, puis revient à la sélection', () => {
     const { context, document, selection, calls } = createTestContext();

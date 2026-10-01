@@ -197,10 +197,14 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 
 ### M0.7 — Locks
 
-- [ ] Lock / unlock, timeout, libération à la déconnexion
-- [ ] Indicateur visuel « en cours d'édition par … »
+- [x] Protocole `LOCK` / `UNLOCK`, diffusion `LOCKS`, refus `LOCK_DENIED`, rejet `LOCKED` d'un lot touchant un objet verrouillé par un autre
+- [x] Table de verrous côté serveur : tout ou rien, expiration après 10 s sans activité (renouvelée par les opérations du détenteur et toutes les 4 s par le client), balayage périodique, libération au départ et à la suppression de l'objet
+- [x] La libération d'un verrou est diffusée après les dernières modifications de son détenteur
+- [x] Éditeur : verrou au début d'un glisser / redimensionnement, libéré au relâchement ; verrou pendant l'édition d'un texte ; objet verrouillé par un autre ni sélectionnable, ni déplaçable, ni éditable, ni supprimable
+- [x] Indicateur visuel « ✎ Nom » à la couleur du participant
 
 **Critère** : deux utilisateurs ne peuvent pas déplacer le même objet en même temps.
+→ **Validé** : tests (table de verrous, sessions à plusieurs clients, outil de sélection) et essai dans deux navigateurs : pendant qu'Alice tient le Router, Bob voit « ✎ Alice » et ne peut pas le déplacer ; dès qu'Alice relâche, Bob le déplace.
 
 ### M0.8 — Undo individuel
 
@@ -335,6 +339,8 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 - Une branche `feature/*` par jalon (ex. `feature/m0.2-render-engine`).
 - **Une PR vers `dev` dès qu'un jalon Mx.x est fonctionnel.**
 - **Une PR `dev` → `main` à chaque fin de phase**, qui correspond à une release.
+- **Chaque jalon ajoute sa fiche de test** (lien + étapes) dans `apps/web/src/milestones.ts`, affichée sur la page d'accueil.
+- `./scripts/dev.sh` lance l'environnement complet (base, configuration, API, frontend).
 - Le README sur `main` est mis à jour à chaque release ; celui de `dev` au fil des fusions.
 - Chaque jalon nécessitant l'iPad (M0.3, M0.9, M1.11) se termine par une demande de test de ta part.
 
@@ -345,6 +351,7 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 | Date | Décision |
 |---|---|
 | 2026-10-01 | Plan validé ; décisions D1 à D22 actées |
+| 2026-10-01 | M0.7 : les verrous ne sont pas persistés (état éphémère en mémoire du serveur) ; le client verrouille de façon optimiste — en cas de course, le serveur refuse le lot (`LOCKED`) et le client est resynchronisé |
 | 2026-10-01 | M0.6 : `ACK` et diffusion après l'enregistrement (durabilité avant latence ; quelques ms en local). Nouveau message `GESTURE_END` quand tous les lots d'un geste sont déjà partis au relâchement |
 | 2026-10-01 | M0.5 : les gestes ne passent pas par des messages éphémères séparés mais par des lots d'opérations réels, regroupés à ~30 Hz et rattachés à un geste (`final` au pointer up) : l'état reste convergent pour un participant qui arrive en cours de geste, et la journalisation (M0.6) pourra ne conserver que l'effet net de chaque geste |
 | 2026-10-01 | M0.5 : sans persistance (M0.6), l'état d'un board vit en mémoire du serveur |

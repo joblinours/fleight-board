@@ -4,11 +4,16 @@ import { Selection } from '../selection';
 import type { ToolContext, ToolName, ToolPoint } from './tool';
 
 /** Contexte d'outil réel (document, sélection) sans DOM, pour les tests. */
-export function createTestContext(objects: BoardObject[] = [], zoom = 1) {
+export function createTestContext(
+  objects: BoardObject[] = [],
+  zoom = 1,
+  /** Objets modifiés par un autre participant : id → nom. */
+  lockedByOthers: Record<string, string> = {},
+) {
   const document = new BoardDocument();
   document.load(objects);
   const selection = new Selection();
-  const calls = { editText: [] as string[], tools: [] as ToolName[] };
+  const calls = { editText: [] as string[], tools: [] as ToolName[], locked: [] as string[] };
   let nextId = 0;
   const context: ToolContext = {
     document,
@@ -26,6 +31,16 @@ export function createTestContext(objects: BoardObject[] = [], zoom = 1) {
     },
     apply: (operations) => {
       document.apply(operations);
+    },
+    lockedBy: (id) => {
+      const name = lockedByOthers[id];
+      return name ? { name, color: '#f00' } : undefined;
+    },
+    lock: (ids) => {
+      const list = [...ids];
+      if (list.some((id) => lockedByOthers[id])) return false;
+      calls.locked.push(...list);
+      return true;
     },
     nextZIndex: () => document.topZIndex() + 1,
     createId: () => `new-${nextId++}`,

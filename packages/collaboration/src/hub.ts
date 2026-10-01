@@ -6,7 +6,8 @@ import {
   type ServerSessionMessage,
 } from '@fleight/protocol';
 import { BoardRoom } from './board-room';
-import { compactOperations } from './compact';
+import { compactOperations, touchedIds } from './compact';
+import { LockTable } from './locks';
 import { InMemoryPubSub, type PubSub, type Unsubscribe } from './pubsub';
 import { type BoardStore, type JournalEntry, MemoryBoardStore } from './store';
 
@@ -28,6 +29,7 @@ export type HubLogger = {
 type LoadedRoom = {
   room: BoardRoom;
   participants: Map<string, Participant>;
+  locks: LockTable;
   /** Enregistrements en cours, chaînés pour respecter l'ordre des séquences. */
   persistence: Promise<void>;
   /** Le stockage a échoué : le board doit être rechargé. */
@@ -51,11 +53,38 @@ export class CollaborationHub {
   readonly #store: BoardStore;
   readonly #log: HubLogger | undefined;
   readonly #disconnects = new Map<string, () => void>();
+  readonly #lockOptions: { ttlMs?: number; now?: () => number };
 
-  constructor(options: { pubsub?: PubSub<Broadcast>; store?: BoardStore; log?: HubLogger } = {}) {
+  constructor(
+    options: {
+      pubsub?: PubSub<Broadcast>;
+      store?: BoardStore;
+      log?: HubLogger;
+      /** Durée de vie d'un verrou sans activité (10 s par défaut). */
+      lockTtlMs?: number;
+      /** Horloge, injectable pour les tests. */
+      now?: () => number;
+    } = {},
+  ) {
     this.#pubsub = options.pubsub ?? new InMemoryPubSub<Broadcast>();
     this.#store = options.store ?? new MemoryBoardStore();
     this.#log = options.log;
+    this.#lockOptions = {
+      ...(options.lockTtlMs !== undefined ? { ttlMs: options.lockTtlMs } : {}),
+      ...(options.now ? { now: options.now } : {}),
+    };
+  }
+
+  /**
+   * Libère les verrous expirés et prévient les participants.
+   * À appeler périodiquement (toutes les secondes, par exemple).
+   */
+  async sweepLocks(): Promise<void> {
+    for (const [boardId, loading] of this.#rooms) {
+      const loaded = await loading;
+      const expired = loaded.locks.expire();
+      if (expired.length) this.#broadcastLocks(boardId, loaded, {}, expired);
+    }
   }
 
   /** Nombre de boards chargés en mémoire. */
@@ -107,6 +136,8 @@ export class CollaborationHub {
       const { boardId, loaded, unsubscribe } = joined;
       joined = undefined;
       unsubscribe();
+      const released = loaded.locks.releaseAll(connectionId);
+      if (released.length) this.#broadcastLocks(boardId, loaded, {}, released);
       const journal = closeGesture();
       if (journal.length) {
         this.#persist(boardId, loaded, { seq: loaded.room.seq, upserts: [], deletes: [], journal });
@@ -135,8 +166,10 @@ export class CollaborationHub {
           joined = { boardId: message.boardId, loaded, unsubscribe };
           send({
             type: 'JOINED',
+            self: connectionId,
             snapshot: loaded.room.snapshot(),
             participants: [...loaded.participants.values()],
+            locks: loaded.locks.snapshot(),
           });
           void this.#pubsub.publish(channel(message.boardId), {
             payload: { type: 'PARTICIPANT_JOINED', participant },
@@ -158,6 +191,28 @@ export class CollaborationHub {
           });
           break;
         }
+        case 'LOCK': {
+          if (!joined) return;
+          const { boardId, loaded } = joined;
+          // Seuls les objets existants se verrouillent.
+          const objectIds = message.objectIds.filter((id) => loaded.room.document.has(id));
+          if (!objectIds.length) return;
+          const result = loaded.locks.acquire(connectionId, objectIds);
+          if (!result.ok) {
+            send({ type: 'LOCK_DENIED', objectIds: result.objectIds, holder: result.holder });
+            return;
+          }
+          const locked = Object.fromEntries(objectIds.map((id) => [id, connectionId]));
+          this.#broadcastLocks(boardId, loaded, locked, []);
+          break;
+        }
+        case 'UNLOCK': {
+          if (!joined) return;
+          const { boardId, loaded } = joined;
+          const released = loaded.locks.release(connectionId, message.objectIds);
+          if (released.length) this.#broadcastLocks(boardId, loaded, {}, released);
+          break;
+        }
         case 'SYNC_REQUEST':
           if (joined) send({ type: 'SNAPSHOT', snapshot: joined.loaded.room.snapshot() });
           break;
@@ -172,6 +227,20 @@ export class CollaborationHub {
             return;
           }
           const { boardId, loaded } = joined;
+          // Un objet verrouillé par un autre participant n'est pas modifiable.
+          const touched = touchedIds(message.operations);
+          const holder = [...touched]
+            .map((id) => loaded.locks.holderOf(id))
+            .find((current) => current !== undefined && current !== connectionId);
+          if (holder) {
+            send({
+              type: 'REJECT',
+              batchId: message.batchId,
+              code: 'LOCKED',
+              message: 'Objet en cours de modification par un autre participant',
+            });
+            return;
+          }
           const result = loaded.room.apply(message.operations);
           if (!result.ok) {
             this.#log?.warn({ connectionId, boardId, reason: result.message }, 'lot refusé');
@@ -183,6 +252,9 @@ export class CollaborationHub {
             });
             return;
           }
+
+          loaded.locks.touch(connectionId, touched);
+          const removedLocks = loaded.locks.remove(result.deletes);
 
           // Journal : un lot hors geste est une entrée ; un geste n'en produit qu'une, à sa fin.
           const journal: JournalEntry[] = [];
@@ -220,6 +292,7 @@ export class CollaborationHub {
               });
             },
           );
+          if (removedLocks.length) this.#broadcastLocks(boardId, loaded, {}, removedLocks);
           break;
         }
       }
@@ -257,6 +330,7 @@ export class CollaborationHub {
       loading = this.#store.load(boardId).then((stored) => ({
         room: new BoardRoom(boardId, stored),
         participants: new Map<string, Participant>(),
+        locks: new LockTable(this.#lockOptions),
         persistence: Promise.resolve(),
         broken: false,
       }));
@@ -265,6 +339,22 @@ export class CollaborationHub {
       loading.catch(() => this.#rooms.delete(boardId));
     }
     return loading;
+  }
+
+  /**
+   * Diffuse un changement de verrous à tous les participants. Il passe après les
+   * enregistrements en cours : un participant ne voit un objet libéré qu'après
+   * avoir reçu les dernières modifications de son détenteur.
+   */
+  #broadcastLocks(
+    boardId: string,
+    loaded: LoadedRoom,
+    locked: Record<string, string>,
+    unlocked: string[],
+  ): void {
+    loaded.persistence = loaded.persistence.then(() =>
+      this.#pubsub.publish(channel(boardId), { payload: { type: 'LOCKS', locked, unlocked } }),
+    );
   }
 
   /** Enregistre un commit après les précédents, puis appelle `then`. */

@@ -29,12 +29,20 @@ export class SelectTool implements Tool {
       const handle =
         box && handleAt(box, point, Math.max(tolerance, HANDLE_SIZE_PX / context.zoom));
       if (handle) {
-        this.#gesture = { kind: 'resize', handle, origin: point, original: selected };
+        this.#gesture = context.lock([selected.id])
+          ? { kind: 'resize', handle, origin: point, original: selected }
+          : { kind: 'none' };
         return;
       }
     }
 
     const target = context.hitTest(point, tolerance);
+    // Objet en cours de modification par un autre participant : intouchable.
+    if (target && context.lockedBy(target.id)) {
+      this.#gesture = { kind: 'none' };
+      this.#lastTap = undefined;
+      return;
+    }
     if (!target) {
       if (!context.modifiers.shift) context.selection.clear();
       this.#gesture = { kind: 'none' };
@@ -53,7 +61,9 @@ export class SelectTool implements Tool {
 
     if (context.modifiers.shift) context.selection.toggle(target.id);
     else if (!context.selection.has(target.id)) context.selection.set([target.id]);
-    this.#gesture = { kind: 'move', last: point, moved: false };
+    this.#gesture = context.lock(context.selection.ids)
+      ? { kind: 'move', last: point, moved: false }
+      : { kind: 'none' };
   }
 
   move(context: ToolContext, points: readonly ToolPoint[]): void {

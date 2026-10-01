@@ -16,6 +16,10 @@ export type TestClient = {
   download(): void;
   tick(): void;
   readonly outgoing: Array<Record<string, unknown>>;
+  /** Messages du serveur pas encore livrés au client. */
+  readonly received: ServerSessionMessage[];
+  /** Événements remontés par le client (rejets, verrous refusés). */
+  events: Array<{ type: string; detail: unknown }>;
   close(): void;
 };
 
@@ -28,8 +32,12 @@ export async function drain(hub: CollaborationHub): Promise<void> {
   }
 }
 
-export function createNetwork(boardId = 'board', store = new MemoryBoardStore()) {
-  const hub = new CollaborationHub({ store });
+export function createNetwork(
+  boardId = 'board',
+  store = new MemoryBoardStore(),
+  hubOptions: { lockTtlMs?: number; now?: () => number } = {},
+) {
+  const hub = new CollaborationHub({ store, ...hubOptions });
   const clients: TestClient[] = [];
 
   function connect(name: string): TestClient {
@@ -37,10 +45,13 @@ export function createNetwork(boardId = 'board', store = new MemoryBoardStore())
     const toClient: ServerSessionMessage[] = [];
     const scheduled: Array<() => void> = [];
     const connection = hub.open(name, (message) => toClient.push(message));
+    const events: Array<{ type: string; detail: unknown }> = [];
     const client = new CollaborationClient({
       boardId,
       name,
       schedule: (callback) => scheduled.push(callback),
+      onRejected: (code) => events.push({ type: 'rejected', detail: code }),
+      onLockDenied: (ids, holder) => events.push({ type: 'lockDenied', detail: { ids, holder } }),
     });
     client.connect({ send: (message) => toServer.push(message), close: () => {} });
 
@@ -62,6 +73,10 @@ export function createNetwork(boardId = 'board', store = new MemoryBoardStore())
       /** Déclenche les envois différés (regroupement à ~30 Hz). */
       tick() {
         for (const callback of scheduled.splice(0)) callback();
+      },
+      events,
+      get received() {
+        return [...toClient];
       },
       get outgoing() {
         return toServer.map((raw) => JSON.parse(raw));

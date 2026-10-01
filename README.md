@@ -67,7 +67,7 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 | Fonctionnalité | Statut |
 |---|---|
 | Synchronisation temps réel via WebSocket | 🧪 Prototypée (M0.5), persistée dans PostgreSQL (M0.6) |
-| Verrouillage temporaire des objets en cours d'édition | _(prévu)_ |
+| Verrouillage temporaire des objets en cours d'édition | 🧪 Prototypé (M0.7) |
 | Curseurs et présence (modes « Drawing only » / « Cursor visible ») | _(prévu)_ |
 | Undo/redo individuel (chacun n'annule que ses propres actions) | _(prévu)_ |
 | Audit log complet et non annulable | _(prévu)_ |
@@ -259,7 +259,21 @@ Seront documentés : variables d'environnement, volumes, healthchecks (`/health`
 - pnpm 10 (`corepack enable`)
 - Docker (pour PostgreSQL)
 
-### Démarrage
+### Démarrage rapide
+
+```bash
+./scripts/dev.sh        # ou : pnpm dev:all
+```
+
+Le script s'occupe de tout :
+- il installe les dépendances si besoin ;
+- il démarre PostgreSQL dans Docker, sur un port libre (5432, sinon 55432…) ;
+- il crée ou aligne `apps/api/.env` ;
+- il lance l'API et le frontend, puis affiche les adresses PC et iPad.
+
+La page d'accueil liste les tests de chaque jalon.
+
+### Démarrage manuel
 
 ```bash
 pnpm install
@@ -275,7 +289,7 @@ POSTGRES_PORT=5433 pnpm db:up
 # apps/api/.env : DATABASE_URL=postgres://fleight:fleight@localhost:5433/fleight
 ```
 
-Ouvrez http://localhost:5173. Prototypes : benchmark du rendu sur http://localhost:5173/#/bench, dessin au stylet et au doigt sur http://localhost:5173/#/ink, objets et connecteurs sur http://localhost:5173/#/board, board collaboratif sur http://localhost:5173/#/board/demo (à ouvrir dans plusieurs navigateurs ; nécessite l'API). Le serveur Vite écoute sur le réseau local : depuis un iPad sur le même Wi-Fi, ouvrez `http://<ip-de-votre-machine>:5173`. Il relaie `/api/*` et `/ws` vers l'API.
+Ouvrez http://localhost:5173 : la page d'accueil donne, pour chaque jalon, le lien de test et les étapes à suivre. Le serveur Vite écoute sur le réseau local : depuis un iPad sur le même Wi-Fi, ouvrez `http://<ip-de-votre-machine>:5173`. Il relaie `/api/*` et `/ws` vers l'API.
 
 Au démarrage, l'API applique automatiquement les migrations de la base (`apps/api/drizzle`). Après une modification de `apps/api/src/db/schema.ts`, générez la migration avec `pnpm --filter @fleight/api exec drizzle-kit generate`.
 

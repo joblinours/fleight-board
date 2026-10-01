@@ -2,6 +2,7 @@ export {
   BoardEditor,
   type BoardEditorOptions,
   type GestureInfo,
+  type LockService,
   type OperationSink,
 } from './board/editor';
 export { HANDLES, type Handle, handleAt, handlePosition, resizeBox } from './board/handles';
@@ -9,7 +10,14 @@ export { boardPainters } from './board/painters';
 export { type BoardSceneItem, toSceneItem } from './board/scene-items';
 export { syncScene } from './board/scene-sync';
 export { Selection, type SelectionListener } from './board/selection';
-export type { Tool, ToolContext, ToolName, ToolPoint, ToolStyle } from './board/tools/tool';
+export type {
+  LockOwner,
+  Tool,
+  ToolContext,
+  ToolName,
+  ToolPoint,
+  ToolStyle,
+} from './board/tools/tool';
 export { Camera, MAX_ZOOM, MIN_ZOOM } from './camera';
 export {
   type Bounds,

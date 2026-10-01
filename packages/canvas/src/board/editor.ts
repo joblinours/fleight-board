@@ -29,7 +29,7 @@ import { PenTool } from './tools/pen-tool';
 import { SelectTool } from './tools/select-tool';
 import { ShapeTool } from './tools/shape-tool';
 import { TextTool } from './tools/text-tool';
-import type { Tool, ToolContext, ToolName, ToolPoint, ToolStyle } from './tools/tool';
+import type { LockOwner, Tool, ToolContext, ToolName, ToolPoint, ToolStyle } from './tools/tool';
 
 /** Tolérance de contact à l'écran, en pixels, selon le pointeur. */
 const TOLERANCE_PX: Record<PointerKind, number> = { mouse: 4, pen: 6, touch: 12 };
@@ -47,6 +47,19 @@ export type OperationSink = {
   endGesture(gestureId: string): void;
 };
 
+/**
+ * Verrous des objets en collaboration. Sans service (board local),
+ * tout est modifiable.
+ */
+export type LockService = {
+  /** Participant qui modifie l'objet, si ce n'est pas l'utilisateur local. */
+  lockedBy(id: string): LockOwner | undefined;
+  /** Objets modifiés par d'autres participants (indicateur visuel). */
+  lockedByOthers(): Iterable<[string, LockOwner]>;
+  acquire(ids: string[]): void;
+  release(ids: string[]): void;
+};
+
 export type BoardEditorOptions = {
   /** Calque des objets. */
   sceneCanvas: HTMLCanvasElement;
@@ -54,6 +67,7 @@ export type BoardEditorOptions = {
   overlayCanvas: HTMLCanvasElement;
   document?: BoardDocument;
   sink?: OperationSink;
+  locks?: LockService;
   /** Demande l'ouverture de l'éditeur de texte pour un objet. */
   onEditText?(id: string): void;
   onToolChange?(tool: ToolName): void;
@@ -87,6 +101,10 @@ export class BoardEditor {
   #tool: Tool;
   /** Geste en cours (entre pointer down et pointer up). */
   #gestureId: string | undefined;
+  /** Objets verrouillés pour le geste en cours. */
+  readonly #gestureLocks = new Set<string>();
+  /** Objet verrouillé pendant l'édition de son texte. */
+  #textLock: string | undefined;
 
   constructor(options: BoardEditorOptions) {
     this.#options = options;
@@ -205,8 +223,16 @@ export class BoardEditor {
     ]);
   }
 
+  /** Supprime la sélection, sauf les objets modifiés par d'autres participants. */
   deleteSelection(): void {
-    this.apply(deleteObjectsOperations(this.document, this.selection.ids));
+    const locks = this.#options.locks;
+    const ids = [...this.selection.ids].filter((id) => !locks?.lockedBy(id));
+    this.apply(deleteObjectsOperations(this.document, ids));
+  }
+
+  /** Redessine l'interface (changement de verrous, de participants…). */
+  refresh(): void {
+    this.#overlayRenderer.requestRender();
   }
 
   selectAll(): void {
@@ -224,6 +250,7 @@ export class BoardEditor {
 
   /** Enregistre le texte saisi pour un objet ; un texte vide est supprimé. */
   commitText(id: string, value: string): void {
+    this.#releaseTextLock();
     const object = this.document.get(id);
     if (!object) return;
     if (object.type === 'text') {
@@ -298,7 +325,9 @@ export class BoardEditor {
       apply: (operations) => this.apply(operations),
       nextZIndex: () => this.document.topZIndex() + 1,
       createId,
-      editText: (id) => this.#options.onEditText?.(id),
+      editText: (id) => this.#editText(id),
+      lockedBy: (id) => this.#options.locks?.lockedBy(id),
+      lock: (ids) => this.#lock(ids),
       setTool: (name) => this.setTool(name),
       invalidate: () => this.#overlayRenderer.requestRender(),
     };
@@ -346,13 +375,83 @@ export class BoardEditor {
     }
     ctx.restore();
 
+    this.#paintLocks(ctx, view);
     this.#tool.paint?.(ctx, view, this.#context);
+  }
+
+  /** Objets modifiés par d'autres participants : cadre et nom à leur couleur. */
+  #paintLocks(ctx: CanvasRenderingContext2D, view: ViewState): void {
+    const locks = this.#options.locks;
+    if (!locks) return;
+    const fontSize = 12 / view.zoom;
+    ctx.save();
+    ctx.lineWidth = 2 / view.zoom;
+    ctx.font = `600 ${fontSize}px system-ui, sans-serif`;
+    ctx.textBaseline = 'middle';
+    for (const [id, owner] of locks.lockedByOthers()) {
+      const object = this.document.get(id);
+      const box = object && objectBox(this.document, object);
+      if (!box) continue;
+      const margin = 4 / view.zoom;
+      ctx.strokeStyle = owner.color;
+      ctx.setLineDash([6 / view.zoom, 3 / view.zoom]);
+      ctx.strokeRect(
+        box.x - margin,
+        box.y - margin,
+        box.width + margin * 2,
+        box.height + margin * 2,
+      );
+
+      const label = `✎ ${owner.name}`;
+      const padding = 4 / view.zoom;
+      const width = ctx.measureText(label).width + padding * 2;
+      const height = fontSize + padding * 2;
+      const x = box.x - margin;
+      const y = box.y - margin - height;
+      ctx.fillStyle = owner.color;
+      ctx.fillRect(x, y, width, height);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(label, x + padding, y + height / 2);
+    }
+    ctx.restore();
+  }
+
+  #lock(ids: Iterable<string>): boolean {
+    const locks = this.#options.locks;
+    const list = [...ids];
+    if (!locks) return true;
+    if (list.some((id) => locks.lockedBy(id))) return false;
+    const missing = list.filter((id) => !this.#gestureLocks.has(id));
+    for (const id of missing) this.#gestureLocks.add(id);
+    if (missing.length) locks.acquire(missing);
+    return true;
+  }
+
+  #editText(id: string): void {
+    const locks = this.#options.locks;
+    if (locks?.lockedBy(id)) return;
+    this.#releaseTextLock();
+    if (locks) {
+      this.#textLock = id;
+      locks.acquire([id]);
+    }
+    this.#options.onEditText?.(id);
+  }
+
+  #releaseTextLock(): void {
+    const id = this.#textLock;
+    this.#textLock = undefined;
+    // Le verrou peut aussi servir au geste en cours (double-tap pendant un glisser).
+    if (id && !this.#gestureLocks.has(id)) this.#options.locks?.release([id]);
   }
 
   #endGesture(): void {
     const gestureId = this.#gestureId;
     this.#gestureId = undefined;
     if (gestureId) this.#options.sink?.endGesture(gestureId);
+    const released = [...this.#gestureLocks].filter((id) => id !== this.#textLock);
+    this.#gestureLocks.clear();
+    if (released.length) this.#options.locks?.release(released);
   }
 
   #panBy(dx: number, dy: number): void {
