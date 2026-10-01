@@ -220,28 +220,22 @@ Sources d'installation : upload ZIP et marketplace. Premier plugin prévu : **Ne
 
 ## Structure du dépôt
 
-_(prévue — sera mise à jour à la création du monorepo)_
-
 ```text
 fleight-board/
 ├── apps/
-│   ├── web/            # Frontend React
-│   └── api/            # Backend Fastify (REST + WebSocket)
+│   ├── web/              # Frontend React + Vite
+│   └── api/              # Backend Fastify (REST + WebSocket)
 ├── packages/
-│   ├── canvas/         # Moteur de rendu et d'entrée
-│   ├── collaboration/  # Moteur de synchronisation, locks, undo
-│   ├── protocol/       # Schémas zod et messages versionnés
-│   ├── permissions/    # Règles de rôles et d'autorisation
-│   ├── plugin-sdk/     # SDK pour les plugins
-│   └── shared/         # Types et utilitaires communs
-├── plugins/
-│   └── network/
+│   ├── canvas/           # Moteur de rendu et d'entrée (caméra, rendu, Pointer Events)
+│   ├── collaboration/    # Synchronisation, pub/sub, locks, undo
+│   ├── protocol/         # Schémas zod et messages versionnés
+│   └── shared/           # Utilitaires communs (identifiants ULID…)
 ├── infrastructure/
-│   ├── docker/
-│   └── compose/
-├── tests/
-└── docs/
+│   └── compose/          # docker-compose de développement
+└── docs/                 # Plan d'implémentation, rapports
 ```
+
+À venir : `packages/permissions`, `packages/plugin-sdk`, `plugins/network`, `infrastructure/docker` (images de production), `tests/` (collaboration et e2e).
 
 ## Installation
 
@@ -258,7 +252,42 @@ Seront documentés : variables d'environnement, volumes, healthchecks (`/health`
 
 ## Développement
 
-_(prévu)_ Prérequis envisagés : Node.js LTS, pnpm, Docker.
+### Prérequis
+
+- Node.js 22+ (voir `.nvmrc`)
+- pnpm 10 (`corepack enable`)
+- Docker (pour PostgreSQL)
+
+### Démarrage
+
+```bash
+pnpm install
+pnpm db:up                                   # PostgreSQL de développement
+cp apps/api/.env.example apps/api/.env       # configuration de l'API
+pnpm dev                                     # API sur :3000, web sur :5173
+```
+
+Ouvrez http://localhost:5173. Le serveur Vite écoute sur le réseau local : depuis un iPad sur le même Wi-Fi, ouvrez `http://<ip-de-votre-machine>:5173`. Il relaie `/api/*` et `/ws` vers l'API.
+
+### Commandes
+
+| Commande | Rôle |
+|---|---|
+| `pnpm dev` | Lance l'API et le web en mode watch |
+| `pnpm lint` | Lint et vérification du formatage (Biome) |
+| `pnpm format` | Corrige le formatage |
+| `pnpm typecheck` | Vérifie les types de tous les packages |
+| `pnpm test` | Lance les tests (Vitest) |
+| `pnpm build` | Build de production |
+| `pnpm db:up` / `pnpm db:down` | Démarre / arrête PostgreSQL |
+
+### Endpoints de l'API
+
+| Endpoint | Rôle |
+|---|---|
+| `GET /health` | Liveness : le processus répond |
+| `GET /ready` | Readiness : PostgreSQL est joignable (`503` sinon) |
+| `WS /ws` | WebSocket ; le premier message doit être `HELLO` avec la version du protocole |
 
 ## Roadmap
 
