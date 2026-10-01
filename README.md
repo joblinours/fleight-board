@@ -55,11 +55,11 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 |---|---|
 | Canvas standard (A4, A3, A2, 16:9, 4:3, personnalisé) | _(prévu)_ |
 | Canvas infini (zoom, pan) | 🧪 Moteur de rendu prototypé (M0.2) |
-| Primitives : rectangle, ellipse, ligne, flèche, polygone, texte, image | _(prévu)_ |
+| Primitives : rectangle, ellipse, ligne, flèche, polygone, texte, image | 🧪 Rectangle, ellipse et texte prototypés (M0.4) |
 | Dessin libre : stylo, surligneur, gomme, couleur, épaisseur, opacité | 🧪 Stylo à pression prototypé (M0.3) |
-| Sélection, groupes, copier/coller, duplication | _(prévu)_ |
+| Sélection, groupes, copier/coller, duplication | 🧪 Sélection, déplacement, redimensionnement prototypés (M0.4) |
 | Frames (conteneurs titrés, exportables) | _(prévu)_ |
-| Connecteurs droits/orthogonaux, ancrages, labels, suivi des objets | _(prévu)_ |
+| Connecteurs droits/orthogonaux, ancrages, labels, suivi des objets | 🧪 Connecteurs droits ancrés qui suivent les objets (M0.4) |
 | Métadonnées structurées sur les objets | _(prévu)_ |
 
 ### Collaboration
@@ -228,7 +228,8 @@ fleight-board/
 ├── packages/
 │   ├── canvas/           # Moteur de rendu et d'entrée (caméra, rendu, Pointer Events)
 │   ├── collaboration/    # Synchronisation, pub/sub, locks, undo
-│   ├── protocol/         # Schémas zod et messages versionnés
+│   ├── document/         # État du board, opérations et géométrie (client et serveur)
+│   ├── protocol/         # Schémas zod (objets, messages) versionnés
 │   └── shared/           # Utilitaires communs (identifiants ULID…)
 ├── infrastructure/
 │   └── compose/          # docker-compose de développement
@@ -267,7 +268,7 @@ cp apps/api/.env.example apps/api/.env       # configuration de l'API
 pnpm dev                                     # API sur :3000, web sur :5173
 ```
 
-Ouvrez http://localhost:5173. Prototypes : benchmark du rendu sur http://localhost:5173/#/bench, dessin au stylet et au doigt sur http://localhost:5173/#/ink. Le serveur Vite écoute sur le réseau local : depuis un iPad sur le même Wi-Fi, ouvrez `http://<ip-de-votre-machine>:5173`. Il relaie `/api/*` et `/ws` vers l'API.
+Ouvrez http://localhost:5173. Prototypes : benchmark du rendu sur http://localhost:5173/#/bench, dessin au stylet et au doigt sur http://localhost:5173/#/ink, objets et connecteurs sur http://localhost:5173/#/board. Le serveur Vite écoute sur le réseau local : depuis un iPad sur le même Wi-Fi, ouvrez `http://<ip-de-votre-machine>:5173`. Il relaie `/api/*` et `/ws` vers l'API.
 
 ### Commandes
 

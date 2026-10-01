@@ -43,6 +43,9 @@ export function HomePage() {
         <li>
           <a href="#/ink">Dessin, stylet et tactile</a> — M0.3
         </li>
+        <li>
+          <a href="#/board">Objets et connecteurs</a> — M0.4
+        </li>
       </ul>
     </main>
   );

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@fleight/canvas": "workspace:*",
+    "@fleight/document": "workspace:*",
     "@fleight/protocol": "workspace:*",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
