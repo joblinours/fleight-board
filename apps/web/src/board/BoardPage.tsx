@@ -40,6 +40,7 @@ export function BoardPage({ boardId }: { boardId?: string }) {
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
   const [participants, setParticipants] = useState<readonly Participant[]>([]);
   const [rejection, setRejection] = useState<string | null>(null);
+  const [history, setHistory] = useState({ canUndo: false, canRedo: false });
 
   useEffect(() => {
     const container = containerRef.current;
@@ -77,7 +78,8 @@ export function BoardPage({ boardId }: { boardId?: string }) {
             document: client.document,
             locks: createLockService(client),
             sink: {
-              apply: (operations, gesture) => client.applyLocal(operations, gesture),
+              apply: (operations, gesture, intent) =>
+                client.applyLocal(operations, gesture, intent),
               endGesture: (gestureId) => client.endGesture(gestureId),
             },
           }
@@ -86,6 +88,16 @@ export function BoardPage({ boardId }: { boardId?: string }) {
       onToolChange: setTool,
       onSelectionChange: (ids) => setSelectionSize(ids.size),
       onViewChange: () => setViewVersion((version) => version + 1),
+      onHistoryChange: setHistory,
+      onUndoSkipped: ({ applied, skipped, intent }) => {
+        const action = intent === 'undo' ? 'Annulation' : 'Rétablissement';
+        const count = skipped.length > 1 ? `${skipped.length} objets` : 'un objet';
+        setRejection(
+          applied
+            ? `${action} partielle : ${count} supprimé(s) ou modifié(s) depuis par un autre participant.`
+            : `${action} impossible : ${count} supprimé(s) ou modifié(s) depuis par un autre participant.`,
+        );
+      },
     });
     editorRef.current = editor;
 
@@ -200,6 +212,22 @@ export function BoardPage({ boardId }: { boardId?: string }) {
           ))}
         </div>
         <span className="board-separator" />
+        <button
+          type="button"
+          title="Annuler (Ctrl/⌘+Z)"
+          disabled={!history.canUndo}
+          onClick={() => editorRef.current?.undo()}
+        >
+          Annuler
+        </button>
+        <button
+          type="button"
+          title="Rétablir (Ctrl/⌘+Maj+Z)"
+          disabled={!history.canRedo}
+          onClick={() => editorRef.current?.redo()}
+        >
+          Rétablir
+        </button>
         <button
           type="button"
           disabled={selectionSize === 0}

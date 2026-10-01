@@ -5,6 +5,8 @@ import {
   hitTestObject,
   objectBox,
   type Point,
+  type RevertResult,
+  UndoHistory,
 } from '@fleight/document';
 import type { BoardObject } from '@fleight/protocol';
 import { createId } from '@fleight/shared';
@@ -43,7 +45,7 @@ export type GestureInfo = { id: string; final: boolean };
  * directement au document ; en collaboration, le client les applique et les envoie.
  */
 export type OperationSink = {
-  apply(operations: DocumentOperation[], gesture?: GestureInfo): void;
+  apply(operations: DocumentOperation[], gesture?: GestureInfo, intent?: 'undo' | 'redo'): void;
   endGesture(gestureId: string): void;
 };
 
@@ -74,6 +76,10 @@ export type BoardEditorOptions = {
   onSelectionChange?(ids: ReadonlySet<string>): void;
   /** Toute modification de la vue (pan, zoom, objets) : utile pour repositionner l'éditeur de texte. */
   onViewChange?(): void;
+  /** Disponibilité de l'annulation et du rétablissement. */
+  onHistoryChange?(state: { canUndo: boolean; canRedo: boolean }): void;
+  /** Une annulation n'a pas pu tout restaurer (objets supprimés ou modifiés par d'autres). */
+  onUndoSkipped?(result: RevertResult & { intent: 'undo' | 'redo' }): void;
 };
 
 /** Éditeur de whiteboard local : document, rendu, entrées, outils et sélection. */
@@ -97,6 +103,8 @@ export class BoardEditor {
   };
   readonly #options: BoardEditorOptions;
   readonly #modifiers = { shift: false };
+  /** Historique d'annulation de l'utilisateur local uniquement. */
+  readonly #history = new UndoHistory();
   readonly #cleanups: Array<() => void> = [];
   #tool: Tool;
   /** Geste en cours (entre pointer down et pointer up). */
@@ -200,15 +208,62 @@ export class BoardEditor {
     this.#options.onViewChange?.();
   }
 
+  /** Applique des opérations locales ; elles entrent dans l'historique d'annulation. */
   apply(operations: DocumentOperation[]): void {
     if (!operations.length) return;
+    const gestureId = this.#gestureId;
+    this.#history.track(
+      this.document,
+      operations,
+      () => this.#send(operations, gestureId),
+      gestureId,
+    );
+    this.#notifyHistory();
+  }
+
+  /** Annule la dernière action de l'utilisateur local (pas celles des autres). */
+  undo(): void {
+    this.#revert('undo');
+  }
+
+  /** Rétablit la dernière action annulée. */
+  redo(): void {
+    this.#revert('redo');
+  }
+
+  get canUndo(): boolean {
+    return this.#history.canUndo;
+  }
+
+  get canRedo(): boolean {
+    return this.#history.canRedo;
+  }
+
+  #revert(intent: 'undo' | 'redo'): void {
+    // Pas d'annulation au milieu d'un geste.
+    if (this.#gestureId) return;
+    const locks = this.#options.locks;
+    const options = { blocked: (id: string) => locks?.lockedBy(id) !== undefined };
+    const apply = (operations: DocumentOperation[]) => this.#send(operations, undefined, intent);
+    const result =
+      intent === 'undo'
+        ? this.#history.undo(this.document, apply, options)
+        : this.#history.redo(this.document, apply, options);
+    if (result.skipped.length) this.#options.onUndoSkipped?.({ ...result, intent });
+    this.#notifyHistory();
+  }
+
+  #send(operations: DocumentOperation[], gestureId?: string, intent?: 'undo' | 'redo'): void {
     const sink = this.#options.sink;
     if (!sink) {
       this.document.apply(operations);
       return;
     }
-    const gestureId = this.#gestureId;
-    sink.apply(operations, gestureId ? { id: gestureId, final: false } : undefined);
+    sink.apply(operations, gestureId ? { id: gestureId, final: false } : undefined, intent);
+  }
+
+  #notifyHistory(): void {
+    this.#options.onHistoryChange?.({ canUndo: this.canUndo, canRedo: this.canRedo });
   }
 
   /** Remplace tout le contenu du board (exemple, import) en un seul lot. */
@@ -448,7 +503,11 @@ export class BoardEditor {
   #endGesture(): void {
     const gestureId = this.#gestureId;
     this.#gestureId = undefined;
-    if (gestureId) this.#options.sink?.endGesture(gestureId);
+    if (gestureId) {
+      this.#history.endGroup(gestureId);
+      this.#notifyHistory();
+      this.#options.sink?.endGesture(gestureId);
+    }
     const released = [...this.#gestureLocks].filter((id) => id !== this.#textLock);
     this.#gestureLocks.clear();
     if (released.length) this.#options.locks?.release(released);
@@ -495,6 +554,13 @@ export class BoardEditor {
       } else if (key === 'escape') {
         this.selection.clear();
         this.setTool('select');
+      } else if ((event.ctrlKey || event.metaKey) && key === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) this.redo();
+        else this.undo();
+      } else if ((event.ctrlKey || event.metaKey) && key === 'y') {
+        event.preventDefault();
+        this.redo();
       } else if ((event.ctrlKey || event.metaKey) && key === 'a') {
         event.preventDefault();
         this.selectAll();

@@ -43,6 +43,8 @@ export const operations = pgTable(
     seq: bigint('seq', { mode: 'number' }).notNull(),
     actor: text('actor').notNull(),
     gestureId: text('gesture_id'),
+    /** `undo` ou `redo` ; absent pour une action normale. */
+    intent: text('intent').$type<'undo' | 'redo'>(),
     operations: jsonb('operations').$type<Operation[]>().notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

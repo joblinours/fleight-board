@@ -1,4 +1,4 @@
-import type { BoardObject, Operation } from '@fleight/protocol';
+import type { BoardObject, Intent, Operation } from '@fleight/protocol';
 
 /** État persisté d'un board. */
 export type StoredBoard = {
@@ -14,6 +14,8 @@ export type JournalEntry = {
   /** Connexion à l'origine (utilisateur à partir de M1.1). */
   actor: string;
   gestureId?: string;
+  /** Annulation ou rétablissement. */
+  intent?: Intent;
   operations: Operation[];
 };
 

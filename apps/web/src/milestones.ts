@@ -104,4 +104,20 @@ export const MILESTONES: Milestone[] = [
       'Relâcher sur l’iPad : l’objet redevient modifiable depuis le PC.',
     ],
   },
+  {
+    id: 'M0.8',
+    title: 'Undo individuel',
+    summary: 'Ctrl/⌘+Z n’annule que ses propres actions, sans écraser celles des autres.',
+    href: '#/board/test-m08',
+    linkLabel: 'Board « test-m08 »',
+    needsApi: true,
+    multiDevice: true,
+    steps: [
+      'Sur le PC : « Exemple », puis déplacer le Router.',
+      'Sur l’iPad : double-tap sur le Router et le renommer.',
+      'Sur le PC : Ctrl+Z (ou « Annuler ») — le Router revient à sa place et garde le nom donné sur l’iPad.',
+      'Ctrl+Maj+Z (ou « Rétablir ») le redéplace.',
+      'Supprimer sur l’iPad un objet déplacé sur le PC, puis Ctrl+Z sur le PC : message « Annulation impossible ».',
+    ],
+  },
 ];
