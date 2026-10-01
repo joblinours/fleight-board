@@ -312,7 +312,9 @@ Client                         Serveur
 
 ## 7. Organisation
 
-- Une branche `feature/*` par jalon (ex. `feature/m0.2-render-engine`), PR vers `dev`.
+- Une branche `feature/*` par jalon (ex. `feature/m0.2-render-engine`).
+- **Une PR vers `dev` dès qu'un jalon Mx.x est fonctionnel.**
+- **Une PR `dev` → `main` à chaque fin de phase**, qui correspond à une release.
 - Le README sur `main` est mis à jour à chaque release ; celui de `dev` au fil des fusions.
 - Chaque jalon nécessitant l'iPad (M0.3, M0.9, M1.11) se termine par une demande de test de ta part.
 
