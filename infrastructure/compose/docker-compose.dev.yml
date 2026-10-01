@@ -1,0 +1,23 @@
+# Services nécessaires au développement local.
+# Usage : pnpm db:up / pnpm db:down
+name: fleight-board-dev
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: fleight
+      POSTGRES_PASSWORD: fleight
+      POSTGRES_DB: fleight
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleight -d fleight"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:

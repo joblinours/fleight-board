@@ -118,11 +118,11 @@ Client                         Serveur
 
 ### M0.1 — Socle du monorepo
 
-- [ ] Monorepo pnpm + Turborepo : `apps/web`, `apps/api`, `packages/{protocol,canvas,collaboration,shared}`
-- [ ] TypeScript strict, Biome, Vitest
-- [ ] `docker-compose.dev.yml` avec PostgreSQL
-- [ ] CI GitHub Actions (lint, typecheck, tests, build)
-- [ ] README : section Développement
+- [x] Monorepo pnpm + Turborepo : `apps/web`, `apps/api`, `packages/{protocol,canvas,collaboration,shared}`
+- [x] TypeScript strict, Biome, Vitest
+- [x] `docker-compose.dev.yml` avec PostgreSQL
+- [x] CI GitHub Actions (lint, typecheck, tests, build)
+- [x] README : section Développement
 
 **Critère** : `pnpm install && pnpm dev` lance le web et l'API ; la CI est verte.
 
@@ -323,3 +323,4 @@ Client                         Serveur
 | Date | Décision |
 |---|---|
 | 2026-10-01 | Plan validé ; décisions D1 à D22 actées |
+| 2026-10-01 | M0.1 : les packages internes sont consommés directement en TypeScript (pas de build) ; le bundle de production de l'API sera traité en M1.10 |
