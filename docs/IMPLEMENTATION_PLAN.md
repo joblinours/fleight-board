@@ -156,6 +156,7 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 - [x] Page de test dédiée iPad (`#/ink`) avec panneau de diagnostic
 
 **Critère** : validé **sur ton iPad Air + Pencil 2** : tracé fluide, sans lag perceptible, pression visible, aucune trace de paume.
+→ **Validé le 2026-10-01 sur iPad Air + Apple Pencil 2 (iPadOS 27, Safari)** : tracé fluide, pression et palm rejection conformes ; fréquence d'échantillonnage du Pencil ≥ 94 Hz.
 
 ### M0.4 — Modèle d'objets
 
