@@ -268,6 +268,13 @@ cp apps/api/.env.example apps/api/.env       # configuration de l'API
 pnpm dev                                     # API sur :3000, web sur :5173
 ```
 
+Si le port 5432 est déjà utilisé (PostgreSQL installé localement), lancez la base sur un autre port et reportez-le dans `DATABASE_URL` :
+
+```bash
+POSTGRES_PORT=5433 pnpm db:up
+# apps/api/.env : DATABASE_URL=postgres://fleight:fleight@localhost:5433/fleight
+```
+
 Ouvrez http://localhost:5173. Prototypes : benchmark du rendu sur http://localhost:5173/#/bench, dessin au stylet et au doigt sur http://localhost:5173/#/ink, objets et connecteurs sur http://localhost:5173/#/board, board collaboratif sur http://localhost:5173/#/board/demo (à ouvrir dans plusieurs navigateurs ; nécessite l'API). Le serveur Vite écoute sur le réseau local : depuis un iPad sur le même Wi-Fi, ouvrez `http://<ip-de-votre-machine>:5173`. Il relaie `/api/*` et `/ws` vers l'API.
 
 ### Commandes
