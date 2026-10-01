@@ -46,6 +46,8 @@ export type RendererOptions<T extends SceneItem> = {
   /** Horloge en millisecondes ; injectable pour les tests. */
   now?: () => number;
   onRender?: (stats: RenderStats) => void;
+  /** Dessin supplémentaire en coordonnées monde, après les éléments (sélection, aperçus). */
+  overlay?: (ctx: CanvasRenderingContext2D, view: ViewState) => void;
 };
 
 const DEFAULT_GRID: GridOptions = { color: 'rgba(128, 128, 128, 0.15)', minSpacing: 16 };
@@ -67,6 +69,7 @@ export class CanvasRenderer<T extends SceneItem = SceneItem> {
   readonly #scheduleFrame: (callback: () => void) => void;
   readonly #now: () => number;
   readonly #onRender: ((stats: RenderStats) => void) | undefined;
+  readonly #overlay: ((ctx: CanvasRenderingContext2D, view: ViewState) => void) | undefined;
   readonly #unsubscribe: () => void;
 
   #width = 0;
@@ -91,6 +94,7 @@ export class CanvasRenderer<T extends SceneItem = SceneItem> {
     this.#scheduleFrame = options.scheduleFrame ?? ((callback) => requestAnimationFrame(callback));
     this.#now = options.now ?? (() => performance.now());
     this.#onRender = options.onRender;
+    this.#overlay = options.overlay;
     this.#unsubscribe = this.#scene.subscribe(() => this.requestRender());
   }
 
@@ -155,6 +159,7 @@ export class CanvasRenderer<T extends SceneItem = SceneItem> {
       if (painter) painter(ctx, item, view);
       else drawMissingPainter(ctx, item, view);
     }
+    this.#overlay?.(ctx, view);
 
     this.#stats = {
       renderMs: this.#now() - start,

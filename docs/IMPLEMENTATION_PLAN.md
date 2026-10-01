@@ -160,9 +160,12 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 
 ### M0.4 — Modèle d'objets
 
-- [ ] Schémas `zod` : rectangle, ellipse, texte, trait libre, connecteur
-- [ ] Création, sélection, déplacement, redimensionnement
-- [ ] Connecteurs droits avec points d'ancrage, qui suivent les objets
+- [x] Schémas `zod` : rectangle, ellipse, texte, trait libre, connecteur (`packages/protocol`)
+- [x] Package `@fleight/document` : état du board modifié par opérations atomiques, chacune retournant son inverse (base de l'undo M0.8) ; utilisable côté client et serveur
+- [x] Création, sélection (simple, Maj pour ajouter), déplacement, redimensionnement par poignées, suppression
+- [x] Connecteurs droits avec 4 points d'ancrage, qui suivent les objets
+- [x] Édition du texte et des labels (double-tap / double-clic), outil stylo produisant des objets `stroke`
+- [x] Page de test `#/board` avec diagramme d'exemple
 
 **Critère** : on peut construire un petit diagramme relié en local.
 
@@ -334,5 +337,6 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 | Date | Décision |
 |---|---|
 | 2026-10-01 | Plan validé ; décisions D1 à D22 actées |
+| 2026-10-01 | M0.4 : un connecteur s'accroche à l'un des 4 ancrages (haut, droite, bas, gauche) ; supprimer un objet transforme les extrémités accrochées en points libres plutôt que de supprimer les connecteurs ; les points d'un trait sont relatifs à son coin (déplacer ne recalcule pas le tracé) |
 | 2026-10-01 | M0.2 : niveau de détail — une forme de moins de 8 px à l'écran est dessinée en un simple aplat. Si les mesures sur iPad sont insuffisantes, prochaine étape : cache bitmap des objets statiques pendant le pan |
 | 2026-10-01 | M0.1 : les packages internes sont consommés directement en TypeScript (pas de build) ; le bundle de production de l'API sera traité en M1.10 |
