@@ -54,7 +54,7 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 | Fonctionnalité | Statut |
 |---|---|
 | Canvas standard (A4, A3, A2, 16:9, 4:3, personnalisé) | _(prévu)_ |
-| Canvas infini (zoom, pan) | _(prévu)_ |
+| Canvas infini (zoom, pan) | 🧪 Moteur de rendu prototypé (M0.2) |
 | Primitives : rectangle, ellipse, ligne, flèche, polygone, texte, image | _(prévu)_ |
 | Dessin libre : stylo, surligneur, gomme, couleur, épaisseur, opacité | _(prévu)_ |
 | Sélection, groupes, copier/coller, duplication | _(prévu)_ |
@@ -267,7 +267,7 @@ cp apps/api/.env.example apps/api/.env       # configuration de l'API
 pnpm dev                                     # API sur :3000, web sur :5173
 ```
 
-Ouvrez http://localhost:5173. Le serveur Vite écoute sur le réseau local : depuis un iPad sur le même Wi-Fi, ouvrez `http://<ip-de-votre-machine>:5173`. Il relaie `/api/*` et `/ws` vers l'API.
+Ouvrez http://localhost:5173. Le benchmark du moteur de rendu est accessible sur http://localhost:5173/#/bench. Le serveur Vite écoute sur le réseau local : depuis un iPad sur le même Wi-Fi, ouvrez `http://<ip-de-votre-machine>:5173`. Il relaie `/api/*` et `/ws` vers l'API.
 
 ### Commandes
 

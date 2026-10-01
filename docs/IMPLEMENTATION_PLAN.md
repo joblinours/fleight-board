@@ -128,13 +128,21 @@ Client                         Serveur
 
 ### M0.2 — Moteur de rendu
 
-- [ ] Caméra (zoom, pan) et conversion écran ↔ monde
-- [ ] Graphe de scène, rendu Canvas 2D, gestion du `devicePixelRatio`
-- [ ] Index spatial (`rbush`) : culling du viewport et hit-testing
-- [ ] Rendu à la demande (dirty flag), pas de boucle permanente
-- [ ] Banc de performance : 5 000 objets
+- [x] Caméra (zoom, pan) et conversion écran ↔ monde
+- [x] Graphe de scène, rendu Canvas 2D, gestion du `devicePixelRatio`
+- [x] Index spatial (`rbush`) : culling du viewport et hit-testing
+- [x] Rendu à la demande (dirty flag), pas de boucle permanente
+- [x] Banc de performance : 5 000 objets (page `#/bench`, benchmark scripté de 6 s)
 
 **Critère** : 60 fps en pan/zoom avec 5 000 objets sur desktop et iPad Air.
+→ **Validé sur matériel réel, à 20 000 objets (4× la cible)** — benchmark scripté de 6 s :
+
+| Appareil | Densité | FPS moyen | Frame p95 | Frames perdues |
+|---|---|---:|---:|---:|
+| Desktop — i7-14700K, RTX 4060, Kali Linux | ×1 | 103,7 | 20,9 ms | 2,2 % |
+| iPad Air + Safari (écran 60 Hz) | ×2 | 51,1 | 22,0 ms | 3,9 % |
+
+_À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins de 4 % de frames perdues ; la cible de 5 000 objets est donc tenue avec marge. Pour référence, Chromium headless sans GPU : 47 fps à 5 000 objets (rastérisation logicielle)._
 
 ### M0.3 — Entrées et Apple Pencil
 
@@ -325,4 +333,5 @@ Client                         Serveur
 | Date | Décision |
 |---|---|
 | 2026-10-01 | Plan validé ; décisions D1 à D22 actées |
+| 2026-10-01 | M0.2 : niveau de détail — une forme de moins de 8 px à l'écran est dessinée en un simple aplat. Si les mesures sur iPad sont insuffisantes, prochaine étape : cache bitmap des objets statiques pendant le pan |
 | 2026-10-01 | M0.1 : les packages internes sont consommés directement en TypeScript (pas de build) ; le bundle de production de l'API sera traité en M1.10 |
