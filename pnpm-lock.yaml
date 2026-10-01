@@ -29,6 +29,9 @@ importers:
       '@fastify/websocket':
         specifier: ^11.3.1
         version: 11.3.1
+      '@fleight/collaboration':
+        specifier: workspace:*
+        version: link:../../packages/collaboration
       '@fleight/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -60,6 +63,9 @@ importers:
       '@fleight/canvas':
         specifier: workspace:*
         version: link:../../packages/canvas
+      '@fleight/collaboration':
+        specifier: workspace:*
+        version: link:../../packages/collaboration
       '@fleight/document':
         specifier: workspace:*
         version: link:../../packages/document
@@ -108,7 +114,17 @@ importers:
         specifier: ^4.0.0
         version: 4.0.0
 
-  packages/collaboration: {}
+  packages/collaboration:
+    dependencies:
+      '@fleight/document':
+        specifier: workspace:*
+        version: link:../document
+      '@fleight/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@fleight/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/document:
     dependencies:

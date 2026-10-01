@@ -65,3 +65,103 @@ describe('handshake WebSocket', () => {
     expect(await closed).toBe(CloseCode.InvalidMessage);
   });
 });
+
+describe('session collaborative', () => {
+  type Message = Record<string, unknown>;
+
+  /** Client de test : mémorise les messages reçus et permet d'attendre un type donné. */
+  function collector(socket: WebSocket) {
+    const received: Message[] = [];
+    const waiters: Array<{ type: string; resolve: (message: Message) => void }> = [];
+    socket.on('message', (data) => {
+      const message = JSON.parse(data.toString()) as Message;
+      const index = waiters.findIndex(({ type }) => type === message.type);
+      if (index >= 0) waiters.splice(index, 1)[0]?.resolve(message);
+      else received.push(message);
+    });
+    return {
+      next(type: string): Promise<Message> {
+        const index = received.findIndex((message) => message.type === type);
+        if (index >= 0) return Promise.resolve(received.splice(index, 1)[0] as Message);
+        return new Promise((resolve) => waiters.push({ type, resolve }));
+      },
+      send: (message: Message) => socket.send(JSON.stringify(message)),
+    };
+  }
+
+  async function join(current: App, name: string) {
+    const socket = await current.injectWS('/ws');
+    const client = collector(socket);
+    client.send({ type: 'HELLO', protocolVersion: PROTOCOL_VERSION });
+    await client.next('HELLO');
+    client.send({ type: 'JOIN', boardId: 'demo', name });
+    const joined = await client.next('JOINED');
+    return { socket, client, joined };
+  }
+
+  const rectangle = {
+    type: 'rectangle',
+    id: 'r1',
+    zIndex: 0,
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 50,
+    fill: '#fff',
+    stroke: '#000',
+    strokeWidth: 2,
+    label: 'Firewall',
+  };
+
+  it('diffuse les opérations d’un participant aux autres', async () => {
+    app = await buildApp({ database: { ping: async () => true } });
+    await app.ready();
+    const alice = await join(app, 'Alice');
+    const bob = await join(app, 'Bob');
+
+    expect(await alice.client.next('PARTICIPANT_JOINED')).toMatchObject({
+      participant: { name: 'Bob' },
+    });
+
+    alice.client.send({
+      type: 'OPS',
+      batchId: 'b1',
+      operations: [{ kind: 'create', object: rectangle }],
+    });
+
+    expect(await alice.client.next('ACK')).toMatchObject({
+      batchId: 'b1',
+      seq: 1,
+      versions: { r1: 1 },
+    });
+    expect(await bob.client.next('OPS')).toMatchObject({
+      seq: 1,
+      operations: [{ kind: 'create', object: rectangle }],
+    });
+
+    // Un nouveau participant reçoit l'état courant.
+    const carol = await join(app, 'Carol');
+    expect(carol.joined).toMatchObject({ snapshot: { seq: 1, objects: [rectangle] } });
+    expect((carol.joined.participants as unknown[]).length).toBe(3);
+
+    for (const { socket } of [alice, bob, carol]) socket.terminate();
+  });
+
+  it('refuse un lot invalide sans modifier le board', async () => {
+    app = await buildApp({ database: { ping: async () => true } });
+    await app.ready();
+    const alice = await join(app, 'Alice');
+
+    alice.client.send({
+      type: 'OPS',
+      batchId: 'b2',
+      operations: [{ kind: 'update', id: 'absent', patch: { x: 1 } }],
+    });
+
+    expect(await alice.client.next('REJECT')).toMatchObject({
+      batchId: 'b2',
+      code: 'INVALID_OPERATION',
+    });
+    alice.socket.terminate();
+  });
+});

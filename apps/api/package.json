@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@fastify/websocket": "^11.3.1",
+    "@fleight/collaboration": "workspace:*",
     "@fleight/protocol": "workspace:*",
     "@fleight/shared": "workspace:*",
     "fastify": "^5.12.5",

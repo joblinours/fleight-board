@@ -305,3 +305,56 @@ body {
   pointer-events: none;
   text-align: center;
 }
+
+.board-session {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(28px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, Canvas 94%, transparent);
+  box-shadow: 0 4px 24px rgb(0 0 0 / 0.15);
+  font-size: 13px;
+}
+
+.board-session ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.board-status::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #f59e0b;
+}
+
+.board-status.joined::before {
+  background: #16a34a;
+}
+
+.board-status.closed::before {
+  background: #dc2626;
+}
+
+.board-room {
+  color: GrayText;
+}
+
+.board-toast {
+  position: absolute;
+  left: 50%;
+  bottom: max(48px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: #1f2937;
+  color: #ffffff;
+  font-size: 13px;
+}

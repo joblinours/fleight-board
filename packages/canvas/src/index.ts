@@ -1,4 +1,9 @@
-export { BoardEditor, type BoardEditorOptions } from './board/editor';
+export {
+  BoardEditor,
+  type BoardEditorOptions,
+  type GestureInfo,
+  type OperationSink,
+} from './board/editor';
 export { HANDLES, type Handle, handleAt, handlePosition, resizeBox } from './board/handles';
 export { boardPainters } from './board/painters';
 export { type BoardSceneItem, toSceneItem } from './board/scene-items';

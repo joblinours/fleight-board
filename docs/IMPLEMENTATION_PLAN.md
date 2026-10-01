@@ -171,13 +171,16 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 
 ### M0.5 — Serveur temps réel
 
-- [ ] Fastify + `ws`, handshake avec version du protocole
-- [ ] `JOIN_SESSION`, `LEAVE_SESSION`, opérations, `ACK`/`REJECT`
-- [ ] Version par objet, séquence par board
-- [ ] Interface `PubSub` (implémentation mémoire)
-- [ ] Messages éphémères pour les gestes en cours
+- [x] Fastify + `ws`, handshake avec version du protocole
+- [x] `JOIN`, `LEAVE`, `OPS`, `ACK`/`REJECT`, `SYNC_REQUEST`/`SNAPSHOT`, arrivée/départ des participants
+- [x] Version par objet, séquence par board (`BoardRoom`)
+- [x] Interface `PubSub` (implémentation mémoire) utilisée pour la diffusion (`CollaborationHub`, indépendant du transport)
+- [x] Gestes en cours : lots regroupés à ~30 Hz côté client, rattachés à un `gesture` dont le dernier lot est marqué `final`
+- [x] Client optimiste (`CollaborationClient`) : application locale immédiate, rebase des modifications non confirmées sur les opérations distantes qui touchent les mêmes objets, resynchronisation après un rejet
+- [x] Page `#/board/<id>` : statut de connexion, participants
 
 **Critère** : deux navigateurs voient les modifications de l'autre en temps réel.
+→ **Validé** : test de bout en bout dans deux navigateurs Chromium (diagramme d'exemple, déplacement, création), et test de convergence aléatoire (3 clients, 40 graines × 60 actions, ordres de livraison aléatoires).
 
 ### M0.6 — Persistance
 
@@ -337,6 +340,8 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 | Date | Décision |
 |---|---|
 | 2026-10-01 | Plan validé ; décisions D1 à D22 actées |
+| 2026-10-01 | M0.5 : les gestes ne passent pas par des messages éphémères séparés mais par des lots d'opérations réels, regroupés à ~30 Hz et rattachés à un geste (`final` au pointer up) : l'état reste convergent pour un participant qui arrive en cours de geste, et la journalisation (M0.6) pourra ne conserver que l'effet net de chaque geste |
+| 2026-10-01 | M0.5 : sans persistance (M0.6), l'état d'un board vit en mémoire du serveur |
 | 2026-10-01 | M0.4 : un connecteur s'accroche à l'un des 4 ancrages (haut, droite, bas, gauche) ; supprimer un objet transforme les extrémités accrochées en points libres plutôt que de supprimer les connecteurs ; les points d'un trait sont relatifs à son coin (déplacer ne recalcule pas le tracé) |
 | 2026-10-01 | M0.2 : niveau de détail — une forme de moins de 8 px à l'écran est dessinée en un simple aplat. Si les mesures sur iPad sont insuffisantes, prochaine étape : cache bitmap des objets statiques pendant le pan |
 | 2026-10-01 | M0.1 : les packages internes sont consommés directement en TypeScript (pas de build) ; le bundle de production de l'API sera traité en M1.10 |

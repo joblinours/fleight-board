@@ -1,4 +1,5 @@
 import websocket from '@fastify/websocket';
+import { CollaborationHub } from '@fleight/collaboration';
 import type { HealthResponse } from '@fleight/protocol';
 import { PROTOCOL_VERSION } from '@fleight/protocol';
 import Fastify, { type FastifyServerOptions } from 'fastify';
@@ -8,12 +9,17 @@ import { registerWebSocket } from './websocket';
 export type AppOptions = {
   database: Pick<Database, 'ping'>;
   logger?: FastifyServerOptions['logger'];
+  hub?: CollaborationHub;
 };
 
-export async function buildApp({ database, logger = false }: AppOptions) {
-  const app = Fastify({ logger });
+/** Taille maximale d'un message WebSocket (1 Mio). */
+const MAX_MESSAGE_BYTES = 1024 * 1024;
 
-  await app.register(websocket);
+export async function buildApp({ database, logger = false, hub }: AppOptions) {
+  const app = Fastify({ logger });
+  const collaboration = hub ?? new CollaborationHub({ log: app.log });
+
+  await app.register(websocket, { options: { maxPayload: MAX_MESSAGE_BYTES } });
 
   // Liveness : le processus répond.
   app.get('/health', async (): Promise<HealthResponse> => {
@@ -27,7 +33,7 @@ export async function buildApp({ database, logger = false }: AppOptions) {
     return { status: ready ? 'ok' : 'unavailable', protocolVersion: PROTOCOL_VERSION };
   });
 
-  await app.register(registerWebSocket);
+  await app.register(registerWebSocket, { hub: collaboration });
 
   return app;
 }
