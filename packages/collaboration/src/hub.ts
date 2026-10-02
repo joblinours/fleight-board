@@ -2,6 +2,7 @@ import {
   type ClientSessionMessage,
   ClientSessionMessageSchema,
   type Operation,
+  PARTICIPANT_COLORS,
   type Participant,
   type ServerSessionMessage,
 } from '@fleight/protocol';
@@ -57,6 +58,9 @@ export type DisconnectReason = 'storage' | 'board-not-found' | 'board-deleted';
 
 type CommitGroup = Array<{ commit: BoardCommit; then: (() => void) | undefined }>;
 
+/** Intervalle minimal entre deux curseurs relayés pour une connexion. */
+const CURSOR_INTERVAL_MS = 20;
+
 /** Geste en cours d'une connexion : ses opérations sont journalisées en une fois. */
 type OpenGesture = { id: string; operations: Operation[]; seq: number };
 
@@ -78,6 +82,7 @@ export class CollaborationHub {
   readonly #disconnects = new Map<string, (reason: DisconnectReason) => void>();
   readonly #requireExistingBoards: boolean;
   readonly #lockOptions: { ttlMs?: number; now?: () => number };
+  readonly #now: () => number;
 
   constructor(
     options: {
@@ -99,6 +104,7 @@ export class CollaborationHub {
     this.#pubsub = options.pubsub ?? new InMemoryPubSub<Broadcast>();
     this.#store = options.store ?? new MemoryBoardStore();
     this.#log = options.log;
+    this.#now = options.now ?? Date.now;
     this.#lockOptions = {
       ...(options.lockTtlMs !== undefined ? { ttlMs: options.lockTtlMs } : {}),
       ...(options.now ? { now: options.now } : {}),
@@ -162,6 +168,8 @@ export class CollaborationHub {
       | { boardId: string; loaded: LoadedRoom; unsubscribe: Unsubscribe; clientId: string }
       | undefined;
     let gesture: OpenGesture | undefined;
+    /** Dernier curseur relayé (limitation du débit). */
+    let lastCursorAt = Number.NEGATIVE_INFINITY;
     /** Auteur journalisé : l'utilisateur, à défaut le client (stable à travers les reconnexions). */
     let actor = user?.id ?? connectionId;
     let actorName: string | undefined = user?.name;
@@ -215,7 +223,14 @@ export class CollaborationHub {
             disconnect?.('board-not-found');
             return;
           }
-          const participant = { connectionId, name: user?.name ?? message.name };
+          const used = new Set([...loaded.participants.values()].map(({ color }) => color));
+          const participant: Participant = {
+            connectionId,
+            name: user?.name ?? message.name,
+            ...(user ? { userId: user.id } : {}),
+            color: pickColor(user?.id ?? message.clientId, used),
+            mode: message.mode ?? 'cursor',
+          };
           loaded.participants.set(connectionId, participant);
           const unsubscribe = this.#pubsub.subscribe(
             channel(message.boardId),
@@ -282,6 +297,33 @@ export class CollaborationHub {
         case 'SYNC_REQUEST':
           if (joined) send({ type: 'SNAPSHOT', snapshot: joined.loaded.room.snapshot() });
           break;
+        case 'CURSOR': {
+          if (!joined) return;
+          const participant = joined.loaded.participants.get(connectionId);
+          // « Drawing only » : le curseur n'est pas partagé.
+          if (participant?.mode !== 'cursor') return;
+          const now = this.#now();
+          // Un curseur qui quitte le board passe toujours ; les autres sont limités.
+          if (message.position && now - lastCursorAt < CURSOR_INTERVAL_MS) return;
+          lastCursorAt = now;
+          void this.#pubsub.publish(channel(joined.boardId), {
+            payload: { type: 'CURSOR', connectionId, position: message.position },
+            exclude: connectionId,
+          });
+          break;
+        }
+        case 'PRESENCE_MODE': {
+          if (!joined) return;
+          const current = joined.loaded.participants.get(connectionId);
+          if (!current || current.mode === message.mode) return;
+          const participant = { ...current, mode: message.mode };
+          joined.loaded.participants.set(connectionId, participant);
+          // Tous les participants (le demandeur compris) voient le nouveau mode.
+          void this.#pubsub.publish(channel(joined.boardId), {
+            payload: { type: 'PARTICIPANT_UPDATED', participant },
+          });
+          break;
+        }
         case 'OPS': {
           if (!joined) {
             send({
@@ -527,4 +569,19 @@ export class CollaborationHub {
 
 function channel(boardId: string): string {
   return `board:${boardId}`;
+}
+
+/**
+ * Couleur d'un participant : une couleur libre du board, choisie à partir de
+ * l'utilisateur pour rester la même d'une session à l'autre quand c'est possible.
+ */
+export function pickColor(seed: string, used: ReadonlySet<string>): string {
+  let hash = 0;
+  for (const char of seed) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  const count = PARTICIPANT_COLORS.length;
+  for (let i = 0; i < count; i++) {
+    const color = PARTICIPANT_COLORS[(hash + i) % count] as string;
+    if (!used.has(color)) return color;
+  }
+  return PARTICIPANT_COLORS[hash % count] as string;
 }

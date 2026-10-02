@@ -69,7 +69,7 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 |---|---|
 | Synchronisation temps réel via WebSocket | 🧪 Prototypée (M0.5), persistée dans PostgreSQL (M0.6) |
 | Verrouillage temporaire des objets en cours d'édition | 🧪 Prototypé (M0.7) |
-| Curseurs et présence (modes « Drawing only » / « Cursor visible ») | _(prévu)_ |
+| Curseurs et présence (modes « Drawing only » / « Cursor visible ») | 🧪 Implémenté (M1.6) : curseurs nommés à la couleur du participant, liste des participants, mode choisi par chacun et mémorisé |
 | Undo/redo individuel (chacun n'annule que ses propres actions) | 🧪 Prototypé (M0.8) |
 | Audit log complet et non annulable | 🧪 Prototypé (M0.10) : une entrée par opération finale, annulations comprises |
 | Travail local temporaire pendant une coupure réseau, puis resynchronisation | 🧪 Prototypé (M0.9) |
