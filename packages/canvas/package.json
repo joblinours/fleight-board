@@ -1,0 +1,23 @@
+{
+  "name": "@fleight/canvas",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fleight/document": "workspace:*",
+    "@fleight/protocol": "workspace:*",
+    "@fleight/shared": "workspace:*",
+    "perfect-freehand": "^1.2.3",
+    "rbush": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/rbush": "^4.0.0"
+  }
+}

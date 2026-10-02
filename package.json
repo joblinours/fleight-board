@@ -1,0 +1,32 @@
+{
+  "name": "fleight-board",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:all": "bash scripts/dev.sh",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "db:up": "docker compose -f infrastructure/compose/docker-compose.dev.yml up -d",
+    "db:down": "docker compose -f infrastructure/compose/docker-compose.dev.yml down",
+    "load": "pnpm --filter @fleight/api load"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@types/node": "^26.6.3",
+    "turbo": "^2.11.6",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

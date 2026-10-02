@@ -23,6 +23,10 @@ feature/* ← une branche par fonctionnalité ou correctif
 3. Sur votre première PR, postez le commentaire d'acceptation du CLA (voir [CLA.md](CLA.md#8-how-to-accept)).
 4. La CI doit être verte et la PR relue avant fusion.
 
+## Lancer le projet
+
+`./scripts/dev.sh` démarre l'environnement complet (voir le [README](README.md#développement)).
+
 ## Messages de commit
 
 Le projet suit [Conventional Commits](https://www.conventionalcommits.org/) :

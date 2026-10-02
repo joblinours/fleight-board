@@ -2,12 +2,12 @@
 
 > Whiteboard collaboratif temps réel, self-hosted, Docker-first, extensible par plugins et conçu dès le départ pour desktop, tablette et Apple Pencil.
 
-![Statut](https://img.shields.io/badge/statut-conception-orange)
-![Phase](https://img.shields.io/badge/phase-0%20%E2%80%94%20Proof%20of%20Concept-blue)
+![Statut](https://img.shields.io/badge/statut-d%C3%A9veloppement-orange)
+![Phase](https://img.shields.io/badge/phase-1%20%E2%80%94%20Core%20MVP-blue)
 ![Licence](https://img.shields.io/badge/licence-C8CL%20%2B%20commerciale-lightgrey)
 
 > [!WARNING]
-> **Projet en phase de conception.** Aucune version utilisable n'est encore disponible. Ce README décrit la cible du produit et sera mis à jour au fil de la réalisation. Les éléments marqués _(prévu)_ ne sont pas encore implémentés.
+> **Projet en développement.** La preuve de concept (Phase 0) est terminée ; aucune version utilisable en production n'est encore disponible. Ce README décrit la cible du produit et sera mis à jour au fil de la réalisation. Les éléments marqués _(prévu)_ ne sont pas encore implémentés.
 
 ---
 
@@ -54,24 +54,24 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 | Fonctionnalité | Statut |
 |---|---|
 | Canvas standard (A4, A3, A2, 16:9, 4:3, personnalisé) | _(prévu)_ |
-| Canvas infini (zoom, pan) | _(prévu)_ |
-| Primitives : rectangle, ellipse, ligne, flèche, polygone, texte, image | _(prévu)_ |
-| Dessin libre : stylo, surligneur, gomme, couleur, épaisseur, opacité | _(prévu)_ |
-| Sélection, groupes, copier/coller, duplication | _(prévu)_ |
+| Canvas infini (zoom, pan) | 🧪 Moteur de rendu prototypé (M0.2) |
+| Primitives : rectangle, ellipse, ligne, flèche, polygone, texte, image | 🧪 Rectangle, ellipse et texte prototypés (M0.4) |
+| Dessin libre : stylo, surligneur, gomme, couleur, épaisseur, opacité | 🧪 Stylo à pression prototypé (M0.3) |
+| Sélection, groupes, copier/coller, duplication | 🧪 Sélection, déplacement, redimensionnement prototypés (M0.4) |
 | Frames (conteneurs titrés, exportables) | _(prévu)_ |
-| Connecteurs droits/orthogonaux, ancrages, labels, suivi des objets | _(prévu)_ |
+| Connecteurs droits/orthogonaux, ancrages, labels, suivi des objets | 🧪 Connecteurs droits ancrés qui suivent les objets (M0.4) |
 | Métadonnées structurées sur les objets | _(prévu)_ |
 
 ### Collaboration
 
 | Fonctionnalité | Statut |
 |---|---|
-| Synchronisation temps réel via WebSocket | _(prévu)_ |
-| Verrouillage temporaire des objets en cours d'édition | _(prévu)_ |
+| Synchronisation temps réel via WebSocket | 🧪 Prototypée (M0.5), persistée dans PostgreSQL (M0.6) |
+| Verrouillage temporaire des objets en cours d'édition | 🧪 Prototypé (M0.7) |
 | Curseurs et présence (modes « Drawing only » / « Cursor visible ») | _(prévu)_ |
-| Undo/redo individuel (chacun n'annule que ses propres actions) | _(prévu)_ |
-| Audit log complet et non annulable | _(prévu)_ |
-| Travail local temporaire pendant une coupure réseau, puis resynchronisation | _(prévu)_ |
+| Undo/redo individuel (chacun n'annule que ses propres actions) | 🧪 Prototypé (M0.8) |
+| Audit log complet et non annulable | 🧪 Prototypé (M0.10) : une entrée par opération finale, annulations comprises |
+| Travail local temporaire pendant une coupure réseau, puis resynchronisation | 🧪 Prototypé (M0.9) |
 | Mode présentation (navigation, zoom et focus synchronisés) | _(prévu)_ |
 
 ### Administration
@@ -161,7 +161,8 @@ Fleight Board utilise une approche **hybride à serveur autoritaire** :
 - les clients envoient des **opérations structurées** (`CREATE_OBJECT`, `UPDATE_OBJECT`, `DELETE_OBJECT`, …) ;
 - le serveur valide les permissions, applique, **versionne chaque objet**, journalise et diffuse ;
 - un objet en cours d'édition est **verrouillé** par son éditeur (pointer down → lock, pointer up → unlock, avec un timeout de sécurité) ;
-- l'état est persisté sous forme de **journal d'opérations + snapshots**.
+- l'état est persisté sous forme de **journal d'opérations + snapshots** ;
+- chaque opération finale (un tracé ou un déplacement complet, une annulation…) produit une entrée dans **`audit_logs`**, écrite dans la même transaction que le journal.
 
 ### Règles de résolution
 
@@ -170,6 +171,7 @@ Fleight Board utilise une approche **hybride à serveur autoritaire** :
 | Alice déplace X, Bob change ensuite sa couleur, Alice fait Ctrl+Z | Seule la position est restaurée ; la couleur de Bob est conservée |
 | Undo sur un objet supprimé entre-temps par un autre utilisateur | Undo ignoré, avec notification |
 | Opérations faites pendant une coupure réseau en conflit avec des modifications distantes | Rejetées, avec notification (« N modifications n'ont pas pu être appliquées ») |
+| Même propriété modifiée en même temps par deux participants | La première modification arrivée au serveur l'emporte, l'autre est refusée et signalée |
 | Undo | Enregistré dans l'audit log ; l'audit log n'est jamais annulé |
 
 ## Utilisateurs, rôles et permissions
@@ -189,6 +191,8 @@ Viewer < Editor < Presenter < Co-owner < Owner
 ```
 
 - Il n'existe **pas** de rôle « Admin » au niveau d'un whiteboard : le rôle Admin est réservé au gestionnaire de l'application.
+- Les rôles sont cumulatifs : un Presenter peut aussi éditer.
+- Seul l'**Owner** peut supprimer le whiteboard et en transférer la propriété ; le **Co-owner** gère tout le reste (membres, partage, permissions).
 - On ne peut déléguer qu'un rôle au plus égal au sien.
 - Un Admin global qui crée un whiteboard y agit comme un User ; le rôle maximal qu'il peut déléguer est **Co-owner**.
 
@@ -218,28 +222,23 @@ Sources d'installation : upload ZIP et marketplace. Premier plugin prévu : **Ne
 
 ## Structure du dépôt
 
-_(prévue — sera mise à jour à la création du monorepo)_
-
 ```text
 fleight-board/
 ├── apps/
-│   ├── web/            # Frontend React
-│   └── api/            # Backend Fastify (REST + WebSocket)
+│   ├── web/              # Frontend React + Vite
+│   └── api/              # Backend Fastify (REST + WebSocket)
 ├── packages/
-│   ├── canvas/         # Moteur de rendu et d'entrée
-│   ├── collaboration/  # Moteur de synchronisation, locks, undo
-│   ├── protocol/       # Schémas zod et messages versionnés
-│   ├── permissions/    # Règles de rôles et d'autorisation
-│   ├── plugin-sdk/     # SDK pour les plugins
-│   └── shared/         # Types et utilitaires communs
-├── plugins/
-│   └── network/
+│   ├── canvas/           # Moteur de rendu et d'entrée (caméra, rendu, Pointer Events)
+│   ├── collaboration/    # Sessions (serveur), client optimiste, pub/sub
+│   ├── document/         # État du board, opérations et géométrie (client et serveur)
+│   ├── protocol/         # Schémas zod (objets, messages) versionnés
+│   └── shared/           # Utilitaires communs (identifiants ULID…)
 ├── infrastructure/
-│   ├── docker/
-│   └── compose/
-├── tests/
-└── docs/
+│   └── compose/          # docker-compose de développement
+└── docs/                 # Plan d'implémentation, rapports
 ```
+
+À venir : `packages/permissions`, `packages/plugin-sdk`, `plugins/network`, `infrastructure/docker` (images de production), `tests/` (collaboration et e2e).
 
 ## Installation
 
@@ -256,11 +255,79 @@ Seront documentés : variables d'environnement, volumes, healthchecks (`/health`
 
 ## Développement
 
-_(prévu)_ Prérequis envisagés : Node.js LTS, pnpm, Docker.
+### Prérequis
+
+- Node.js 22+ (voir `.nvmrc`)
+- pnpm 10 (`corepack enable`)
+- Docker (pour PostgreSQL)
+
+### Démarrage rapide
+
+```bash
+./scripts/dev.sh        # ou : pnpm dev:all
+```
+
+Le script s'occupe de tout :
+- il installe les dépendances si besoin ;
+- il démarre PostgreSQL dans Docker, sur un port libre (5432, sinon 55432…) ;
+- il crée ou aligne `apps/api/.env` ;
+- il lance l'API et le frontend, puis affiche les adresses PC et iPad.
+
+La page d'accueil liste les tests de chaque jalon.
+
+### Démarrage manuel
+
+```bash
+pnpm install
+pnpm db:up                                   # PostgreSQL de développement
+cp apps/api/.env.example apps/api/.env       # configuration de l'API
+pnpm dev                                     # API sur :3000, web sur :5173
+```
+
+Si le port 5432 est déjà utilisé (PostgreSQL installé localement), lancez la base sur un autre port et reportez-le dans `DATABASE_URL` :
+
+```bash
+POSTGRES_PORT=5433 pnpm db:up
+# apps/api/.env : DATABASE_URL=postgres://fleight:fleight@localhost:5433/fleight
+```
+
+Ouvrez http://localhost:5173 : la page d'accueil donne, pour chaque jalon, le lien de test et les étapes à suivre. Le serveur Vite écoute sur le réseau local : depuis un iPad sur le même Wi-Fi, ouvrez `http://<ip-de-votre-machine>:5173`. Il relaie `/api/*` et `/ws` vers l'API.
+
+Au démarrage, l'API applique automatiquement les migrations de la base (`apps/api/drizzle`). Après une modification de `apps/api/src/db/schema.ts`, générez la migration avec `pnpm --filter @fleight/api exec drizzle-kit generate`.
+
+Les tests d'intégration PostgreSQL ne s'exécutent que si `TEST_DATABASE_URL` est défini :
+
+```bash
+TEST_DATABASE_URL=postgres://fleight:fleight@localhost:5432/fleight pnpm test
+```
+
+### Commandes
+
+| Commande | Rôle |
+|---|---|
+| `pnpm dev` | Lance l'API et le web en mode watch |
+| `pnpm lint` | Lint et vérification du formatage (Biome) |
+| `pnpm format` | Corrige le formatage |
+| `pnpm typecheck` | Vérifie les types de tous les packages |
+| `pnpm test` | Lance les tests (Vitest) |
+| `pnpm build` | Build de production |
+| `pnpm db:up` / `pnpm db:down` | Démarre / arrête PostgreSQL |
+| `pnpm load` | Test de charge contre l'API lancée : utilisateurs simulés sur le vrai WebSocket, latences et convergence (`--users 2,5,20,50 --duration 30 --board <nom>`) |
+
+### Endpoints de l'API
+
+| Endpoint | Rôle |
+|---|---|
+| `GET /health` | Liveness : le processus répond |
+| `GET /ready` | Readiness : PostgreSQL est joignable (`503` sinon) |
+| `GET /boards/:boardId/audit?limit=200` | Audit d'un board, du plus récent au plus ancien (ouvert en Phase 0 ; réservé au propriétaire et à l'admin à partir de M1.2) |
+| `WS /ws` | WebSocket ; le premier message doit être `HELLO` avec la version du protocole |
 
 ## Roadmap
 
-- [ ] **Phase 0 — Proof of Concept technique** : canvas desktop + iPad/Apple Pencil, objets structurés, connecteurs, WebSocket, 2+ utilisateurs, locks, undo individuel, persistance, reconnexion, audit log.
+Le plan détaillé (jalons, critères de validation, décisions) est tenu dans [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) sur la branche `dev`.
+
+- [x] **Phase 0 — Proof of Concept technique** : canvas desktop + iPad/Apple Pencil, objets structurés, connecteurs, WebSocket, 2+ utilisateurs, locks, undo individuel, persistance, reconnexion, audit log. Terminée le 2 octobre 2026 — [rapport de fin de phase](docs/poc-report.md).
 - [ ] **Phase 1 — Core MVP** : auth locale, Users/Admins, canvas standard et infini, primitives, texte, images, dessin libre, sélection, groupes, frames, connecteurs, undo/redo, collaboration temps réel, locks, curseurs, présence, sessions par code, public/privé, permissions, guests, audit log.
 - [ ] **Phase 2 — Produit utilisable** : présentation, share links, import PDF/SVG/images, export SVG/PNG/PDF, rétention, limites de stockage, MFA, administration complète, transfert de propriété, reconnexion robuste, interface tablette complète.
 - [ ] **Phase 3 — Système de plugins** : SDK, API, permissions, sandbox, installation ZIP, cycle de vie, marketplace, plugin Network.
