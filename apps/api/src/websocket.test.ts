@@ -3,6 +3,7 @@ import { isId } from '@fleight/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 import type WebSocket from 'ws';
 import { buildApp } from './app';
+import { identifyAnyone, identifyByHeader } from './test-helpers';
 import { CloseCode } from './websocket';
 
 type App = Awaited<ReturnType<typeof buildApp>>;
@@ -14,7 +15,7 @@ afterEach(async () => {
 });
 
 async function connect(): Promise<WebSocket> {
-  app = await buildApp({ database: { ping: async () => true } });
+  app = await buildApp({ database: { ping: async () => true }, identify: identifyAnyone });
   await app.ready();
   return app.injectWS('/ws');
 }
@@ -90,7 +91,7 @@ describe('session collaborative', () => {
   }
 
   async function join(current: App, name: string) {
-    const socket = await current.injectWS('/ws');
+    const socket = await current.injectWS('/ws', { headers: { 'x-test-user': name } });
     const client = collector(socket);
     client.send({ type: 'HELLO', protocolVersion: PROTOCOL_VERSION });
     await client.next('HELLO');
@@ -114,7 +115,7 @@ describe('session collaborative', () => {
   };
 
   it('diffuse les opérations d’un participant aux autres', async () => {
-    app = await buildApp({ database: { ping: async () => true } });
+    app = await buildApp({ database: { ping: async () => true }, identify: identifyByHeader });
     await app.ready();
     const alice = await join(app, 'Alice');
     const bob = await join(app, 'Bob');
@@ -149,7 +150,7 @@ describe('session collaborative', () => {
   });
 
   it('refuse un lot invalide sans modifier le board', async () => {
-    app = await buildApp({ database: { ping: async () => true } });
+    app = await buildApp({ database: { ping: async () => true }, identify: identifyByHeader });
     await app.ready();
     const alice = await join(app, 'Alice');
 
@@ -165,5 +166,13 @@ describe('session collaborative', () => {
       code: 'INVALID_OPERATION',
     });
     alice.socket.terminate();
+  });
+});
+
+describe('authentification WebSocket', () => {
+  it('refuse toute connexion sans moyen d’identification', async () => {
+    app = await buildApp({ database: { ping: async () => true } });
+    await app.ready();
+    await expect(app.injectWS('/ws')).rejects.toThrow(/401/);
   });
 });

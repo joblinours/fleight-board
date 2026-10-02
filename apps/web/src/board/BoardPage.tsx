@@ -2,9 +2,10 @@ import { BoardEditor, type InputMode, type ToolName } from '@fleight/canvas';
 import { CollaborationClient, type ConnectionStatus } from '@fleight/collaboration';
 import type { Participant } from '@fleight/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { refreshSession, useSession } from '../auth/session';
 import { createLockService } from './lock-service';
 import { sampleDiagram } from './sample-diagram';
-import { connectWebSocket, displayName } from './websocket-transport';
+import { connectWebSocket } from './websocket-transport';
 
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
   connecting: 'Connexion…',
@@ -49,6 +50,10 @@ export function BoardPage({ boardId }: { boardId?: string }) {
   const [rejection, setRejection] = useState<string | null>(null);
   const [history, setHistory] = useState({ canUndo: false, canRedo: false });
   const [pending, setPending] = useState(0);
+  const session = useSession();
+  // Nom indicatif : le serveur affiche celui du compte connecté.
+  const userName = useRef('Invité');
+  userName.current = session.status === 'authenticated' ? session.user.displayName : 'Invité';
 
   useEffect(() => {
     const container = containerRef.current;
@@ -59,7 +64,7 @@ export function BoardPage({ boardId }: { boardId?: string }) {
     const client = boardId
       ? new CollaborationClient({
           boardId,
-          name: displayName(),
+          name: userName.current,
           onStatus: setStatus,
           onParticipants: (list) => {
             setParticipants(list);
@@ -77,7 +82,10 @@ export function BoardPage({ boardId }: { boardId?: string }) {
             setRejection('Cet objet est en cours de modification par un autre participant.'),
         })
       : undefined;
-    const disconnect = client ? connectWebSocket(client) : undefined;
+    // Connexion perdue : la session a peut-être expiré ou été révoquée (retour à la connexion).
+    const disconnect = client
+      ? connectWebSocket(client, undefined, () => void refreshSession())
+      : undefined;
 
     const editor = new BoardEditor({
       sceneCanvas,

@@ -78,8 +78,8 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 
 | Fonctionnalité | Statut |
 |---|---|
-| Authentification locale + MFA TOTP | _(prévu)_ |
-| Gestion des comptes Users / Admins | _(prévu)_ |
+| Authentification locale (Argon2id, sessions, anti brute force) | 🧪 Implémentée (M1.1) ; MFA TOTP _(prévu)_ |
+| Gestion des comptes Users / Admins, demandes de compte | 🧪 Implémentée (M1.1) |
 | Politique de rétention (corbeille) | _(prévu)_ |
 | Limites de fichiers et de stockage | _(prévu)_ |
 | Gestion des plugins (ZIP, marketplace) | _(prévu)_ |
@@ -270,8 +270,8 @@ Seront documentés : variables d'environnement, volumes, healthchecks (`/health`
 Le script s'occupe de tout :
 - il installe les dépendances si besoin ;
 - il démarre PostgreSQL dans Docker, sur un port libre (5432, sinon 55432…) ;
-- il crée ou aligne `apps/api/.env` ;
-- il lance l'API et le frontend, puis affiche les adresses PC et iPad.
+- il crée ou aligne `apps/api/.env`, avec un Admin de développement (mot de passe généré) ;
+- il lance l'API et le frontend, puis affiche les adresses PC et iPad et les identifiants de l'Admin.
 
 La page d'accueil liste les tests de chaque jalon.
 
@@ -292,6 +292,8 @@ POSTGRES_PORT=5433 pnpm db:up
 ```
 
 Ouvrez http://localhost:5173 : la page d'accueil donne, pour chaque jalon, le lien de test et les étapes à suivre. Le serveur Vite écoute sur le réseau local : depuis un iPad sur le même Wi-Fi, ouvrez `http://<ip-de-votre-machine>:5173`. Il relaie `/api/*` et `/ws` vers l'API.
+
+Pour vous connecter, définissez le premier Admin dans `apps/api/.env` (`ADMIN_USERNAME`, `ADMIN_PASSWORD`) : il est créé au démarrage de l'API s'il n'existe aucun Admin actif.
 
 Au démarrage, l'API applique automatiquement les migrations de la base (`apps/api/drizzle`). Après une modification de `apps/api/src/db/schema.ts`, générez la migration avec `pnpm --filter @fleight/api exec drizzle-kit generate`.
 
@@ -314,14 +316,37 @@ TEST_DATABASE_URL=postgres://fleight:fleight@localhost:5432/fleight pnpm test
 | `pnpm db:up` / `pnpm db:down` | Démarre / arrête PostgreSQL |
 | `pnpm load` | Test de charge contre l'API lancée : utilisateurs simulés sur le vrai WebSocket, latences et convergence (`--users 2,5,20,50 --duration 30 --board <nom>`) |
 
+### Configuration de l'API
+
+Variables d'environnement (`apps/api/.env`, modèle : `apps/api/.env.example`) :
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `DATABASE_URL` | — | Base PostgreSQL |
+| `HOST` / `PORT` | `0.0.0.0` / `3000` | Adresse d'écoute |
+| `LOG_LEVEL` | `info` | Niveau de logs |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_EMAIL` | — | Premier Admin, créé au démarrage s'il n'existe aucun Admin actif |
+| `ALLOW_REGISTRATION` | `true` | Demandes de compte depuis l'interface (validées par un Admin) |
+| `SESSION_TTL_DAYS` / `SESSION_IDLE_DAYS` | `30` / `7` | Durée de vie maximale d'une session, et après inactivité |
+| `TRUST_PROXY` | `false` | Derrière un reverse proxy HTTPS : protocole et IP lus dans `X-Forwarded-*` |
+
 ### Endpoints de l'API
 
 | Endpoint | Rôle |
 |---|---|
 | `GET /health` | Liveness : le processus répond |
 | `GET /ready` | Readiness : PostgreSQL est joignable (`503` sinon) |
-| `GET /boards/:boardId/audit?limit=200` | Audit d'un board, du plus récent au plus ancien (ouvert en Phase 0 ; réservé au propriétaire et à l'admin à partir de M1.2) |
-| `WS /ws` | WebSocket ; le premier message doit être `HELLO` avec la version du protocole |
+| `POST /auth/login` | Connexion (nom d'utilisateur ou e-mail + mot de passe) ; pose le cookie de session |
+| `POST /auth/logout` | Déconnexion |
+| `GET /auth/me` | Utilisateur connecté |
+| `POST /auth/password` | Changement de son mot de passe (ferme ses autres sessions) |
+| `POST /auth/register` | Demande de compte, en attente de validation |
+| `GET`, `POST /admin/users` | Admin : liste et création de comptes (mot de passe temporaire généré) |
+| `PATCH`, `DELETE /admin/users/:id` | Admin : nom, e-mail, rôle, activation / validation, suppression |
+| `POST /admin/users/:id/reset-password` | Admin : mot de passe temporaire, sessions fermées |
+| `GET /admin/audit?limit=200` | Admin : événements de compte (connexions, administration) |
+| `GET /boards/:boardId/audit?limit=200` | Audit d'un board, du plus récent au plus ancien (Admin ; propriétaire du board à partir de M1.2) |
+| `WS /ws` | WebSocket, session requise ; le premier message doit être `HELLO` avec la version du protocole |
 
 ## Roadmap
 
@@ -337,8 +362,12 @@ Le plan détaillé (jalons, critères de validation, décisions) est tenu dans [
 
 ## Sécurité
 
-- Mots de passe hachés en Argon2id, sessions sécurisées avec expiration et rotation.
-- Protection contre le brute force et rate limiting.
+- Mots de passe hachés en Argon2id (paramètres OWASP) ; 10 caractères minimum, sans règles de composition.
+- Sessions en cookie `HttpOnly` / `SameSite=Lax` (et `Secure` en HTTPS) ; seul le hash du jeton est stocké ; expiration après 7 jours d'inactivité et 30 jours au plus ; jeton renouvelé chaque jour.
+- Anti brute force : compte bloqué 15 minutes après 5 échecs, tentatives de connexion limitées par adresse IP, temps de réponse identique pour un compte inconnu.
+- Requêtes qui modifient l'état et connexions WebSocket refusées si elles viennent d'une autre origine.
+- Désactiver un compte, le supprimer ou réinitialiser son mot de passe ferme immédiatement ses sessions et ses connexions.
+- Connexions, échecs et actions d'administration tracés dans l'audit log.
 - MFA TOTP optionnel, imposable globalement par l'Admin.
 - Chaque message WebSocket est associé à un utilisateur, une session, un whiteboard et des permissions, et est validé côté serveur.
 - Plugins isolés et limités par permissions.

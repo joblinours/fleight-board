@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type WebSocket from 'ws';
 import { buildApp } from '../app';
 import { connectDatabase, type Database } from '../database';
+import { identifyAnyone } from '../test-helpers';
 import { PostgresBoardStore, SNAPSHOT_INTERVAL } from './board-store';
 import { operations, snapshots } from './schema';
 
@@ -124,6 +125,7 @@ describe.skipIf(!url)('PostgresBoardStore', () => {
     const start = () =>
       buildApp({
         database: { ping: async () => true },
+        identify: identifyAnyone,
         createHub: (log) => new CollaborationHub({ store, log }),
       });
 

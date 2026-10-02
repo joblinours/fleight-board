@@ -107,6 +107,14 @@ if [ "$CURRENT_URL" != "$EXPECTED_URL" ]; then
   fi
   info "DATABASE_URL aligné sur la base du projet (port $DB_PORT)."
 fi
+# Premier Admin de développement : créé au démarrage de l'API s'il n'existe aucun Admin.
+if ! grep -qE '^ADMIN_USERNAME=' "$ENV_FILE"; then
+  ADMIN_PASSWORD=$(node -e "process.stdout.write(require('node:crypto').randomBytes(12).toString('base64url'))")
+  printf '\n# Premier Admin (développement)\nADMIN_USERNAME=admin\nADMIN_PASSWORD=%s\n' "$ADMIN_PASSWORD" >>"$ENV_FILE"
+  info "Admin de développement ajouté à $ENV_FILE."
+fi
+ADMIN_USER=$(grep -E '^ADMIN_USERNAME=' "$ENV_FILE" | cut -d= -f2-)
+ADMIN_PASS=$(grep -E '^ADMIN_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)
 
 # --- Ports de l'API et du frontend ----------------------------------------------
 if port_in_use "$API_PORT"; then

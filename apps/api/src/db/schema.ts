@@ -1,8 +1,9 @@
-import type { AuditAction, AuditActorType, AuditMetadata } from '@fleight/collaboration';
-import type { BoardObject, Operation } from '@fleight/protocol';
+import type { AuditAction, AuditActorType } from '@fleight/collaboration';
+import type { AccountAuditAction, BoardObject, Operation } from '@fleight/protocol';
 import {
   bigint,
   bigserial,
+  boolean,
   index,
   integer,
   jsonb,
@@ -10,6 +11,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
 export const boards = pgTable('boards', {
@@ -81,14 +83,77 @@ export const auditLogs = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     actor: text('actor').notNull(),
     actorType: text('actor_type').$type<AuditActorType>().notNull(),
-    action: text('action').$type<AuditAction>().notNull(),
-    boardId: text('board_id').notNull(),
+    action: text('action').$type<AuditAction | AccountAuditAction>().notNull(),
+    /** Absent pour les événements de compte (connexion, administration). */
+    boardId: text('board_id'),
     objectId: text('object_id'),
     sessionId: text('session_id'),
-    metadata: jsonb('metadata').$type<AuditMetadata>().notNull(),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull(),
   },
   (table) => [
     index('audit_logs_board_created_idx').on(table.boardId, table.createdAt),
     index('audit_logs_actor_created_idx').on(table.actor, table.createdAt),
+  ],
+);
+
+export type UserRole = 'admin' | 'user';
+/** `pending` : demande de compte en attente de validation par un Admin. */
+export type UserStatus = 'active' | 'disabled' | 'pending';
+
+export const users = pgTable(
+  'users',
+  {
+    id: text('id').primaryKey(),
+    /** En minuscules ; identifiant de connexion. */
+    username: text('username').notNull(),
+    /** En minuscules ; second identifiant de connexion, facultatif. */
+    email: text('email'),
+    displayName: text('display_name').notNull(),
+    /** Argon2id (format PHC). */
+    passwordHash: text('password_hash').notNull(),
+    role: text('role').$type<UserRole>().notNull().default('user'),
+    status: text('status').$type<UserStatus>().notNull().default('active'),
+    /** Mot de passe temporaire (réinitialisé par un Admin) : à changer à la connexion. */
+    mustChangePassword: boolean('must_change_password').notNull().default(false),
+    /** Protection brute force : échecs consécutifs et blocage temporaire. */
+    failedLogins: integer('failed_logins').notNull().default(0),
+    lockedUntil: timestamp('locked_until', { withTimezone: true }),
+    lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('users_username_idx').on(table.username),
+    uniqueIndex('users_email_idx').on(table.email),
+  ],
+);
+
+/**
+ * Sessions : seul le hash SHA-256 du jeton est stocké. Le jeton est renouvelé
+ * périodiquement ; l'ancien reste accepté quelques secondes (requêtes en vol).
+ */
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+    previousTokenHash: text('previous_token_hash'),
+    previousValidUntil: timestamp('previous_valid_until', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Dernier renouvellement du jeton. */
+    rotatedAt: timestamp('rotated_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Expiration absolue (l'expiration d'inactivité se calcule sur `lastSeenAt`). */
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    userAgent: text('user_agent'),
+    ip: text('ip'),
+  },
+  (table) => [
+    uniqueIndex('sessions_token_idx').on(table.tokenHash),
+    index('sessions_previous_token_idx').on(table.previousTokenHash),
+    index('sessions_user_idx').on(table.userId),
   ],
 );

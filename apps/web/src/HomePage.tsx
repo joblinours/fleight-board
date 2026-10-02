@@ -1,5 +1,6 @@
 import { type HealthResponse, HealthResponseSchema, PROTOCOL_VERSION } from '@fleight/protocol';
 import { type FormEvent, useEffect, useState } from 'react';
+import { logout, useSession } from './auth/session';
 import { MILESTONES } from './milestones';
 
 type ApiState = { kind: 'loading' } | { kind: 'ok'; health: HealthResponse } | { kind: 'error' };
@@ -33,8 +34,9 @@ export function HomePage() {
 
   return (
     <main className="home">
+      <AccountBar />
       <h1>Fleight Board</h1>
-      <p>Whiteboard collaboratif temps réel — Phase 0 (Proof of Concept).</p>
+      <p>Whiteboard collaboratif temps réel — Phase 1 (Core MVP).</p>
       <dl>
         <dt>Protocole client</dt>
         <dd>v{PROTOCOL_VERSION}</dd>
@@ -88,5 +90,30 @@ export function HomePage() {
         ))}
       </ol>
     </main>
+  );
+}
+
+/** Utilisateur connecté et accès au compte, ou lien de connexion. */
+function AccountBar() {
+  const session = useSession();
+  if (session.status === 'loading' || session.status === 'offline') return null;
+  if (session.status === 'anonymous') {
+    return (
+      <p className="home-account">
+        <a href="#/login">Se connecter</a> · <a href="#/register">Demander un compte</a>
+      </p>
+    );
+  }
+  return (
+    <p className="home-account">
+      <span>
+        Connecté : <strong>{session.user.displayName}</strong>
+      </span>
+      <a href="#/account">Mon compte</a>
+      {session.user.role === 'admin' && <a href="#/admin">Administration</a>}
+      <button type="button" className="link" onClick={() => void logout()}>
+        Se déconnecter
+      </button>
+    </p>
   );
 }

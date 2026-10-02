@@ -14,7 +14,12 @@ const RECONNECT_DELAYS = [500, 1000, 2000, 4000, 8000];
  * (délai croissant, et immédiatement au retour du réseau).
  * Retourne la fonction de fermeture définitive.
  */
-export function connectWebSocket(client: CollaborationClient, url = websocketUrl()): () => void {
+export function connectWebSocket(
+  client: CollaborationClient,
+  url = websocketUrl(),
+  /** Appelé à chaque fermeture (vérifier la session, par exemple). */
+  onClose?: () => void,
+): () => void {
   let socket: WebSocket | undefined;
   let attempt = 0;
   let timer: number | undefined;
@@ -43,6 +48,7 @@ export function connectWebSocket(client: CollaborationClient, url = websocketUrl
       socket = undefined;
       client.handleClose();
       if (stopped) return;
+      onClose?.();
       const delay = RECONNECT_DELAYS[Math.min(attempt, RECONNECT_DELAYS.length - 1)] ?? 8000;
       attempt += 1;
       timer = window.setTimeout(open, delay);
@@ -68,19 +74,4 @@ export function connectWebSocket(client: CollaborationClient, url = websocketUrl
     window.removeEventListener('offline', onOffline);
     socket?.close();
   };
-}
-
-const NAME_KEY = 'fleight.displayName';
-
-/** Nom affiché mémorisé localement (en attendant l'authentification). */
-export function displayName(): string {
-  try {
-    const saved = window.localStorage.getItem(NAME_KEY);
-    if (saved) return saved;
-    const generated = `Invité ${Math.floor(1000 + Math.random() * 9000)}`;
-    window.localStorage.setItem(NAME_KEY, generated);
-    return generated;
-  } catch {
-    return `Invité ${Math.floor(1000 + Math.random() * 9000)}`;
-  }
 }
