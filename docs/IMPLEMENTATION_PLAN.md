@@ -236,9 +236,20 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 
 ### M0.11 — Tests de collaboration
 
-- [ ] Clients simulés headless : 2, 5, 20, 50 utilisateurs
-- [ ] Créations, modifications, suppressions, locks, déconnexions et undo concurrents
-- [ ] Vérification de convergence : tous les clients finissent avec le même état que le serveur
+- [x] Clients simulés headless : 2, 5, 20, 50 utilisateurs (`SimulatedUser`), en mémoire (ordre de livraison aléatoire) et sur le vrai WebSocket + PostgreSQL (`pnpm load`)
+- [x] Créations, modifications, suppressions, locks, déconnexions et undo concurrents
+- [x] Vérification de convergence : tous les clients finissent avec le même état que le serveur, sans modification en attente ni verrou résiduel
+
+→ **Validé** : convergence sur 1 050 scénarios aléatoires avec enregistrement lent, en vérification ponctuelle (500 à 2 utilisateurs, 300 à 5, 150 à 20, 100 à 50 ; 21 en CI), test de charge WebSocket à 50 utilisateurs convergent 20 fois sur 20, et test de charge de 30 s par palier sur WebSocket + PostgreSQL (machine de 4 cœurs partagée par l'API, la base et le générateur) :
+
+| Utilisateurs | Lots/s | ACK p50 / p95 / p99 (ms) | Diffusion p50 / p95 / p99 (ms) | Convergence |
+|---|---|---|---|---|
+| 2 | 12 | 6.1 / 9.4 / 12.5 | 6.3 / 9.6 / 12.6 | ✅ |
+| 5 | 28 | 5.2 / 9.3 / 12.9 | 5.4 / 9.5 / 13.2 | ✅ |
+| 20 | 115 | 4.9 / 10.8 / 14.3 | 5.3 / 11.2 / 14.8 | ✅ |
+| 50 | 280 | 8.5 / 18 / 27 | 9.1 / 18.7 / 27.8 | ✅ |
+
+Au-delà de l'objectif, sur un seul board : 100 utilisateurs → ACK p50 115 ms, 200 → 430 ms, toujours convergents ; mesure limitée par le générateur (un seul processus Node qui fait tourner tous les clients) sur la même machine.
 
 ### Sortie de Phase 0 — go / no-go
 
@@ -360,6 +371,9 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 | Date | Décision |
 |---|---|
 | 2026-10-01 | Plan validé ; décisions D1 à D22 actées |
+| 2026-10-02 | M0.11 : **enregistrement groupé** (group commit) — les lots arrivés pendant l'enregistrement d'un board partent ensemble dans la transaction suivante, l'`ACK` restant postérieur à l'enregistrement. À 50 utilisateurs actifs, l'ACK passe de 340 ms (p50) à 8 ms : une transaction par lot plafonnait un board à ~190 lots/s |
+| 2026-10-02 | M0.11 : deux bugs de convergence trouvés par le test de charge (sur le vrai WebSocket, quand l'enregistrement prend du retard sur les états complets envoyés immédiatement) et corrigés côté client — (1) un lot diffusé après un `JOINED`/`SNAPSHOT` qui l'inclut déjà était réappliqué et ramenait des objets en arrière : un lot de séquence déjà connue est désormais ignoré ; (2) les lots envoyés avant une demande de resynchronisation étaient réappliqués par-dessus l'état complet qui les incluait déjà, écrasant des modifications plus récentes : ils sont retirés de la file à la réception de l'état. Le test en mémoire simule désormais un enregistrement lent pour couvrir ces cas |
+| 2026-10-02 | M0.11 : bug trouvé par le test à 50 utilisateurs et corrigé — un refus de verrou arrivé après qu'un renouvellement a obtenu ce verrou faisait oublier l'objet au client, qui ne le rendait pas (verrou fantôme jusqu'à l'expiration de 10 s) ; le client rend désormais tout verrou accordé qu'il ne demande plus |
 | 2026-10-02 | M0.10 : l'audit est dérivé du journal (une entrée par opération de l'effet net d'un lot ou d'un geste), sans clé étrangère vers `boards` pour survivre à la suppression d'un board ; acteur = client et type `client` jusqu'aux comptes (M1.1), le nom affiché est conservé dans les métadonnées en attendant |
 | 2026-10-02 | M0.9 : en cas de modifications concurrentes d'une même propriété, le **premier lot arrivé au serveur l'emporte**, le second est refusé (`CONFLICT`) puis resynchronisé — remplace le « dernier qui écrit gagne » de M0.5 ; des propriétés différentes d'un même objet restent fusionnées |
 | 2026-10-02 | M0.9 : deux bugs trouvés par le test aléatoire et corrigés — (1) un board déchargé de la mémoire pendant qu'un participant le rejoignait (course entre départ du dernier et arrivée du suivant, présente depuis M0.6) ; (2) une resynchronisation demandée juste avant une coupure n'était jamais redemandée |

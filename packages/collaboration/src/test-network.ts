@@ -2,7 +2,7 @@ import type { BoardDocument } from '@fleight/document';
 import type { BoardObject, ServerSessionMessage } from '@fleight/protocol';
 import { CollaborationClient } from './client';
 import { CollaborationHub } from './hub';
-import { MemoryBoardStore } from './store';
+import { type BoardStore, MemoryBoardStore } from './store';
 
 /**
  * Réseau simulé : les messages restent en file jusqu'à ce que le test les livre,
@@ -36,9 +36,9 @@ export async function drain(hub: CollaborationHub): Promise<void> {
   }
 }
 
-export function createNetwork(
+export function createNetwork<Store extends BoardStore = MemoryBoardStore>(
   boardId = 'board',
-  store = new MemoryBoardStore(),
+  store: Store = new MemoryBoardStore() as unknown as Store,
   hubOptions: { lockTtlMs?: number; now?: () => number } = {},
 ) {
   const hub = new CollaborationHub({ store, ...hubOptions });

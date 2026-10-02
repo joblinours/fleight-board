@@ -35,7 +35,6 @@ describe.skipIf(!url)('PostgresBoardStore', () => {
 
   beforeAll(async () => {
     database = connectDatabase(url as string);
-    await database.migrate();
     store = new PostgresBoardStore(database.db);
   });
 

@@ -103,4 +103,31 @@ describe('verrous', () => {
     expect(bob.document.has('a')).toBe(false);
     expect(bob.client.locks.has('a')).toBe(false);
   });
+
+  it('rend un verrou accordé après un refus arrivé entre-temps', async () => {
+    const { network, alice, bob } = await setup();
+    alice.client.lock(['a']);
+    await network.settle();
+
+    // Bob demande le verrou : refusé, mais le refus n'est pas encore arrivé chez lui.
+    bob.client.lock(['a']);
+    bob.upload();
+    await network.drain();
+    // Alice relâche ; le renouvellement de Bob, parti entre-temps, obtient le verrou.
+    alice.client.unlock(['a']);
+    alice.upload();
+    await network.drain();
+    bob.tick();
+    bob.upload();
+    await network.drain();
+
+    // Le refus fait abandonner l'objet à Bob : le verrou accordé ensuite doit être rendu.
+    await network.settle();
+    expect(bob.events).toContainEqual({
+      type: 'lockDenied',
+      detail: { ids: ['a'], holder: 'alice' },
+    });
+    expect(alice.client.lockedByOther('a')).toBeUndefined();
+    expect(bob.client.locks.has('a')).toBe(false);
+  });
 });

@@ -151,4 +151,19 @@ export const MILESTONES: Milestone[] = [
       'Survoler un auteur affiche son identifiant client et sa session.',
     ],
   },
+  {
+    id: 'M0.11',
+    title: 'Tests de charge',
+    summary: '20 utilisateurs simulés sur le même board, à regarder et rejoindre en direct.',
+    href: '#/board/test-m11',
+    linkLabel: 'Board « test-m11 »',
+    needsApi: true,
+    steps: [
+      'Ouvrir le board « test-m11 » (sur le PC ou l’iPad).',
+      'Dans un terminal : pnpm load --users 20 --duration 60 --board test-m11',
+      'Les 20 participants simulés apparaissent : déplacements (verrou à leur nom), tracés, renommages, suppressions.',
+      'Déplacer ou renommer des objets en même temps qu’eux : tout reste fluide et cohérent.',
+      'À la fin, le terminal affiche les latences et « convergé » ; « Recadrer » montre le même board partout.',
+    ],
+  },
 ];
