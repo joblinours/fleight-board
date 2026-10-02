@@ -18,10 +18,12 @@ export {
 } from './client';
 export { compactOperations, touchedIds } from './compact';
 export {
+  type Authorize,
   CollaborationHub,
   type DisconnectReason,
   type HubConnection,
   type HubLogger,
+  type HubUser,
   pickColor,
 } from './hub';
 export { type AcquireResult, LOCK_TTL_MS, LockTable } from './locks';

@@ -1,5 +1,6 @@
 import { BoardDocument } from '@fleight/document';
 import {
+  type BoardRole,
   type ClientSessionMessage,
   type Intent,
   type Operation,
@@ -38,6 +39,8 @@ export type CollaborationEvents = {
   onLockDenied?(objectIds: readonly string[], holder: string): void;
   /** Curseurs des autres participants (connexion → position monde). */
   onCursors?(cursors: ReadonlyMap<string, CursorPoint>): void;
+  /** Rôle de l'utilisateur sur le board (à la connexion, puis à chaque changement). */
+  onRole?(role: BoardRole): void;
 };
 
 export type CursorPoint = { x: number; y: number };
@@ -118,6 +121,7 @@ export class CollaborationClient {
    */
   #syncMarks: Array<Set<string>> = [];
   #mode: PresenceMode;
+  #role: BoardRole | undefined;
   readonly #cursors = new Map<string, CursorPoint>();
   /** Dernière position du curseur local pas encore envoyée (`null` : hors du board). */
   #cursor: { position: CursorPoint | null } | undefined;
@@ -134,6 +138,11 @@ export class CollaborationClient {
   /** Curseurs visibles des autres participants. */
   get cursors(): ReadonlyMap<string, CursorPoint> {
     return this.#cursors;
+  }
+
+  /** Rôle sur le board, connu après la connexion. */
+  get role(): BoardRole | undefined {
+    return this.#role;
   }
 
   get presenceMode(): PresenceMode {
@@ -176,6 +185,12 @@ export class CollaborationClient {
       this.#cursorScheduled = false;
       this.#sendCursor();
     }, CURSOR_SEND_MS);
+  }
+
+  #setRole(role: BoardRole): void {
+    if (role === this.#role) return;
+    this.#role = role;
+    this.#options.onRole?.(role);
   }
 
   #setCursor(connectionId: string, position: CursorPoint | null): void {
@@ -403,6 +418,7 @@ export class CollaborationClient {
         this.#reportRejections();
         this.#participants = message.participants;
         this.#options.onParticipants?.(this.#participants);
+        this.#setRole(message.role);
         this.#clearCursors();
         this.#setStatus('joined');
         this.#resendPending();
@@ -502,6 +518,7 @@ export class CollaborationClient {
         );
         this.#options.onParticipants?.(this.#participants);
         if (participant.mode !== 'cursor') this.#setCursor(participant.connectionId, null);
+        if (participant.connectionId === this.#connectionId) this.#setRole(participant.role);
         break;
       }
       case 'CURSOR':

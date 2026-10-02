@@ -211,7 +211,14 @@ export async function registerAuth(app: FastifyInstance, options: AuthRoutesOpti
       return reply.code(413).send(error('FILE_TOO_LARGE', 'Fichier trop volumineux'));
     }
     if (err instanceof BoardError) {
-      const status = { BOARD_NOT_FOUND: 404, ID_TAKEN: 409, FORBIDDEN: 403 }[err.code];
+      const status = {
+        BOARD_NOT_FOUND: 404,
+        ID_TAKEN: 409,
+        FORBIDDEN: 403,
+        USER_NOT_FOUND: 404,
+        MEMBER_NOT_FOUND: 404,
+        ALREADY_MEMBER: 409,
+      }[err.code];
       return reply.code(status).send(error(err.code, err.message));
     }
     if (err instanceof AuthError) {

@@ -195,7 +195,17 @@ Viewer < Editor < Presenter < Co-owner < Owner
 - Les rôles sont cumulatifs : un Presenter peut aussi éditer.
 - Seul l'**Owner** peut supprimer le whiteboard et en transférer la propriété ; le **Co-owner** gère tout le reste (membres, partage, permissions).
 - On ne peut déléguer qu'un rôle au plus égal au sien.
-- Un Admin global qui crée un whiteboard y agit comme un User ; le rôle maximal qu'il peut déléguer est **Co-owner**.
+- Un Admin global qui crée un whiteboard y agit comme un User ; le rôle maximal qu'il peut déléguer est **Co-owner**. Il n'a aucun droit implicite sur les boards des autres (seule la lecture de l'audit lui reste ouverte).
+- Accès des utilisateurs non membres qui connaissent le lien ou le code : **Editor** (par défaut), **Viewer**, ou **aucun** (membres seulement). Un rôle de membre l'emporte toujours, même s'il est plus faible.
+- Le serveur vérifie le rôle sur chaque requête REST et chaque message WebSocket ; un changement de rôle s'applique en direct aux sessions ouvertes, un membre qui perd l'accès est déconnecté.
+
+| Action | Rôle minimal |
+|---|---|
+| Voir le board, les participants, partager son curseur | Viewer |
+| Créer, modifier, supprimer des objets ; importer des images | Editor |
+| Présenter (Phase 2) | Presenter |
+| Renommer, masquer, régler l'accès ; gérer les membres ; lire l'audit | Co-owner |
+| Supprimer le board, transférer la propriété | Owner |
 
 ### Accès temporaires
 
@@ -232,6 +242,7 @@ fleight-board/
 │   ├── canvas/           # Moteur de rendu et d'entrée (caméra, rendu, Pointer Events)
 │   ├── collaboration/    # Sessions (serveur), client optimiste, pub/sub
 │   ├── document/         # État du board, opérations et géométrie (client et serveur)
+│   ├── permissions/      # Rôles de whiteboard, matrice rôle → actions, règles de délégation
 │   ├── protocol/         # Schémas zod (objets, messages) versionnés
 │   └── shared/           # Utilitaires communs (identifiants ULID…)
 ├── infrastructure/
@@ -239,7 +250,7 @@ fleight-board/
 └── docs/                 # Plan d'implémentation, rapports
 ```
 
-À venir : `packages/permissions`, `packages/plugin-sdk`, `plugins/network`, `infrastructure/docker` (images de production), `tests/` (collaboration et e2e).
+À venir : `packages/plugin-sdk`, `plugins/network`, `infrastructure/docker` (images de production), `tests/` (collaboration et e2e).
 
 ## Installation
 
@@ -348,12 +359,15 @@ Variables d'environnement (`apps/api/.env`, modèle : `apps/api/.env.example`) :
 | `PATCH`, `DELETE /admin/users/:id` | Admin : nom, e-mail, rôle, activation / validation, suppression |
 | `POST /admin/users/:id/reset-password` | Admin : mot de passe temporaire, sessions fermées |
 | `GET /admin/audit?limit=200` | Admin : événements de compte (connexions, administration) |
-| `GET`, `POST /boards` | Ses whiteboards (`?hidden=true` : avec les masqués) ; création (nom, description, canvas infini ou standard) |
-| `GET /boards/code/:code` | Board correspondant à un code court (rate limiting par IP) |
-| `GET`, `PATCH`, `DELETE /boards/:id` | Détails ; renommage, description, masquage, suppression immédiate (propriétaire) |
-| `POST /boards/:id/assets` | Import d'une image (corps brut ; type vérifié dans le fichier : PNG, JPEG, GIF, WebP ; SVG refusé) |
+| `GET`, `POST /boards` | Ses whiteboards et ceux partagés avec lui, avec son rôle (`?hidden=true` : avec les masqués) ; création (nom, description, canvas infini ou standard) |
+| `GET /boards/code/:code` | Board correspondant à un code court (rate limiting par IP ; `403` si réservé à ses membres) |
+| `GET`, `PATCH`, `DELETE /boards/:id` | Détails (Viewer) ; renommage, description, masquage, accès des non-membres (Co-owner) ; suppression immédiate (Owner) |
+| `GET`, `POST /boards/:id/members` | Propriétaire et membres (tout participant) ; ajout par nom d'utilisateur ou e-mail (Co-owner, rôle au plus égal au sien) |
+| `PATCH`, `DELETE /boards/:id/members/:userId` | Rôle d'un membre ; retrait (Co-owner, membre de rôle au plus égal au sien), ou départ volontaire |
+| `POST /boards/:id/transfer` | Transfert de propriété à un membre (Owner ; il devient Co-owner) |
+| `POST /boards/:id/assets` | Import d'une image (Editor ; corps brut ; type vérifié dans le fichier : PNG, JPEG, GIF, WebP ; SVG refusé) |
 | `GET /assets/:id` | Image importée (session requise, contenu immuable) |
-| `GET /boards/:id/audit?limit=200` | Audit d'un board, du plus récent au plus ancien (propriétaire du board, Admin) |
+| `GET /boards/:id/audit?limit=200` | Audit d'un board, du plus récent au plus ancien (Co-owner, Owner, Admin) |
 | `WS /ws` | WebSocket, session requise ; le premier message doit être `HELLO` avec la version du protocole |
 
 ## Roadmap

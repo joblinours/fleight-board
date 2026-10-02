@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BoardObjectSchema, ObjectIdSchema } from './objects';
+import { BoardRoleSchema } from './roles';
 
 /** Nombre maximal d'opérations dans un lot. */
 export const MAX_OPERATIONS_PER_BATCH = 500;
@@ -62,6 +63,8 @@ export const ParticipantSchema = z.object({
   /** Couleur attribuée par le serveur (curseur, verrous). */
   color: z.string(),
   mode: PresenceModeSchema,
+  /** Rôle sur le board. */
+  role: BoardRoleSchema,
 });
 export type Participant = z.infer<typeof ParticipantSchema>;
 
@@ -170,6 +173,8 @@ export const JoinedMessageSchema = z.object({
   type: z.literal('JOINED'),
   /** Identifiant de cette connexion (pour reconnaître ses propres verrous). */
   self: z.string(),
+  /** Rôle de cette connexion sur le board. */
+  role: BoardRoleSchema,
   snapshot: SnapshotSchema,
   participants: z.array(ParticipantSchema),
   locks: LockTableSchema,
@@ -222,7 +227,7 @@ export const AckMessageSchema = z.object({
 export const RejectMessageSchema = z.object({
   type: z.literal('REJECT'),
   batchId: z.string(),
-  code: z.enum(['INVALID_OPERATION', 'NOT_JOINED', 'LOCKED', 'CONFLICT']),
+  code: z.enum(['INVALID_OPERATION', 'NOT_JOINED', 'LOCKED', 'CONFLICT', 'FORBIDDEN']),
   message: z.string(),
 });
 

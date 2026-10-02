@@ -43,6 +43,13 @@
       "when": 1790941657481,
       "tag": "0005_assets",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790950770135,
+      "tag": "0006_members",
+      "breakpoints": true
     }
   ]
 }

@@ -313,13 +313,15 @@ Au-delà de l'objectif, sur un seul board : 100 utilisateurs → ACK p50 115 ms,
 - [x] Modes « Drawing only » / « Cursor visible »
 - [x] Liste des participants
 
+→ **Validé** : tests du relais des curseurs (débit limité côté client et serveur, « Drawing only » appliqué par le serveur, mode conservé à la reconnexion, curseur effacé au départ) et des couleurs ; parcours dans deux navigateurs.
+
 ### M1.7 — Permissions
 
-- [ ] Package `permissions` : matrice rôle → actions, testée unitairement
-- [ ] Rôles `Viewer < Editor < Presenter < Co-owner < Owner`
-- [ ] Délégation limitée à son propre rôle ; Admin global plafonné à Co-owner
-- [ ] Vérification serveur sur chaque requête REST et chaque message WebSocket
-- [ ] Gestion des membres depuis l'interface
+- [x] Package `permissions` : matrice rôle → actions, testée unitairement
+- [x] Rôles `Viewer < Editor < Presenter < Co-owner < Owner`
+- [x] Délégation limitée à son propre rôle ; Admin global plafonné à Co-owner
+- [x] Vérification serveur sur chaque requête REST et chaque message WebSocket
+- [x] Gestion des membres depuis l'interface
 
 ### M1.8 — Sessions, invités et accès
 
@@ -385,6 +387,7 @@ Au-delà de l'objectif, sur un seul board : 100 utilisateurs → ACK p50 115 ms,
 | 2026-10-02 | M1.4 : un groupe est un `groupId` partagé (pas d'objet conteneur) : un appui sur un membre sélectionne tout le groupe, grouper des objets déjà groupés les fusionne. Une frame est un objet placé sous le contenu ; son contenu n'est pas stocké mais calculé (objets entièrement à l'intérieur) au début du déplacement, sans ce que d'autres participants modifient ; on la saisit par son bord ou son bandeau de titre. Copier/coller passe par le presse-papiers système (texte préfixé, validé au collage), donc fonctionne entre boards ; une extrémité de connecteur accrochée à un objet non copié devient un point libre |
 | 2026-10-02 | M1.5 : le tracé n'est pas stocké mais recalculé à l'affichage depuis les extrémités (`routing: orthogonal`, absent = droit, donc les connecteurs existants ne changent pas) : chaque client obtient le même tracé sans opération supplémentaire quand une forme bouge. Routage simple : sortie perpendiculaire à l'ancrage sur 24 unités, puis un coude (L) ou deux (Z), sans contournement d'obstacles. Le label est centré à mi-longueur du tracé ; son emprise est estimée sans mesure du texte pour que le test de contact reste indépendant du DOM. L'outil Connecteur trace en orthogonal par défaut, Ligne et Flèche restent droites |
 | 2026-10-02 | M1.6 : la couleur d'un participant est attribuée par le serveur (une couleur libre du board, dérivée de l'utilisateur pour rester stable) et sert au curseur comme aux verrous. Les curseurs sont relayés sans être enregistrés ni journalisés, en coordonnées monde (chacun les voit à sa place quel que soit son zoom), limités à ~20 envois/s par le client et 50/s par le serveur. « Drawing only » est appliqué par le serveur : il ne relaie pas le curseur d'un participant dans ce mode, même si son client l'envoie. Le mode est une préférence du navigateur, renvoyée à chaque connexion |
+| 2026-10-02 | M1.7 : le propriétaire reste dans `boards.owner_id`, les autres rôles dans `board_members` ; « Owner » ne s'attribue pas, il se transfère (l'ancien propriétaire devient Co-owner), ce qui plafonne naturellement toute délégation — Admin compris — à Co-owner. L'Admin global n'a aucun droit implicite sur un board (il garde la lecture de l'audit). En attendant les sessions publiques/privées (M1.8), chaque board règle l'accès des non-membres qui ont le lien ou le code : Editor (défaut, comportement antérieur), Viewer ou aucun ; un rôle de membre l'emporte même s'il est plus faible. Le hub reçoit une fonction `authorize` : rôle vérifié au JOIN, puis sur chaque OPS/LOCK ; quand les membres changent, il réévalue les sessions ouvertes (nouveau rôle diffusé, verrous rendus, déconnexion 4403 sans accès) |
 | 2026-10-02 | M1.2 : les boards sont créés par l'API (plus de création implicite au premier JOIN) ; un board existant reste ouvrable par tout utilisateur connecté qui a son lien ou son code jusqu'aux permissions (M1.7) et aux sessions publiques/privées (M1.8). Supprimer le compte du propriétaire conserve ses boards (propriétaire vide, à réattribuer en M1.7). Formats en unités monde à 96 par pouce (A4 = 794 × 1123) ; les objets peuvent déborder de la page |
 | 2026-10-02 | M1.1 : l'auteur journalisé devient l'**utilisateur** (nom du compte affiché aux autres participants) ; la détection de conflits reste par **client** (deux appareils d'un même compte sont traités comme deux participants). Le WebSocket exige une session ; l'audit d'un board est réservé aux Admins en attendant les propriétaires (M1.2). Cookie `Secure` seulement en HTTPS, pour que l'iPad fonctionne en HTTP sur le réseau local de développement |
 | 2026-10-02 | **Fin de Phase 0 : GO** pour la Phase 1 (rapport `docs/poc-report.md` validé) |

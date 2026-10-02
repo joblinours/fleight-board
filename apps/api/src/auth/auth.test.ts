@@ -415,6 +415,13 @@ describe.skipIf(!url)('authentification', () => {
     const admin = await login(app, (await account('admin')).username);
     const target = await account();
     const session = await login(app, target.username);
+    // Board de l'utilisateur : sans droit sur un board, la session serait refusée.
+    const board = await app.inject({
+      method: 'POST',
+      url: '/boards',
+      cookies: session.cookies,
+      payload: { name: 'Session' },
+    });
     const socket = await app.injectWS('/ws', {
       headers: { cookie: `${SESSION_COOKIE}=${session.cookies[SESSION_COOKIE]}` },
     });
@@ -425,7 +432,7 @@ describe.skipIf(!url)('authentification', () => {
     socket.send(
       JSON.stringify({
         type: 'JOIN',
-        boardId: `ws-${createId()}`,
+        boardId: board.json().board.id,
         name: 'Nom choisi',
         clientId: 'c1',
       }),
