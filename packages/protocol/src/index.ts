@@ -84,6 +84,8 @@ export {
   type BoardObjectType,
   type BoxedObject,
   type ConnectorObject,
+  type ConnectorRouting,
+  ConnectorRoutingSchema,
   ConnectorSchema,
   type EllipseObject,
   EllipseSchema,

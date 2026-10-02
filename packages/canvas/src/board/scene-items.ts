@@ -1,4 +1,4 @@
-import { type BoardDocument, connectorSegment, objectBox, type Segment } from '@fleight/document';
+import { type BoardDocument, connectorPath, objectBox, type Point } from '@fleight/document';
 import type { BoardObject } from '@fleight/protocol';
 import type { SceneItem } from '../scene';
 
@@ -6,8 +6,8 @@ import type { SceneItem } from '../scene';
 export type BoardSceneItem = SceneItem & {
   kind: BoardObject['type'];
   object: BoardObject;
-  /** Tracé résolu d'un connecteur. */
-  segment?: Segment;
+  /** Tracé résolu d'un connecteur (au moins deux points). */
+  path?: Point[];
 };
 
 export function toSceneItem(
@@ -32,8 +32,8 @@ export function toSceneItem(
     },
   };
   if (object.type === 'connector') {
-    const segment = connectorSegment(document, object);
-    if (segment) item.segment = segment;
+    const path = connectorPath(document, object);
+    if (path) item.path = path;
   }
   return item;
 }

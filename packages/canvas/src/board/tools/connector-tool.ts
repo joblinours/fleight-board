@@ -1,4 +1,10 @@
-import { anchorPoint, type Box, nearestAnchor, type Point } from '@fleight/document';
+import {
+  anchorPoint,
+  type Box,
+  nearestAnchor,
+  orthogonalRoute,
+  type Point,
+} from '@fleight/document';
 import type { BoardObject, Endpoint } from '@fleight/protocol';
 import type { PointerKind } from '../../input/input-router';
 import type { ViewState } from '../../renderer';
@@ -9,7 +15,7 @@ import type { Tool, ToolContext, ToolPoint } from './tool';
 const MIN_LENGTH_PX = 8;
 
 /** Objets auxquels un connecteur peut s'accrocher. */
-function connectable(object: BoardObject): boolean {
+export function connectable(object: BoardObject): boolean {
   return object.type !== 'connector' && object.type !== 'stroke';
 }
 
@@ -89,6 +95,9 @@ export class ConnectorTool implements Tool {
           strokeWidth: context.style.strokeWidth,
           arrowStart: false,
           arrowEnd: this.#arrowEnd,
+          ...(this.#snaps && context.style.routing === 'orthogonal'
+            ? { routing: 'orthogonal' as const }
+            : {}),
           ...(context.style.opacity < 1 ? { opacity: context.style.opacity } : {}),
         },
       },
@@ -101,19 +110,29 @@ export class ConnectorTool implements Tool {
     context.invalidate();
   }
 
-  paint(ctx: CanvasRenderingContext2D, view: ViewState): void {
+  paint(ctx: CanvasRenderingContext2D, view: ViewState, context: ToolContext): void {
     const drag = this.#drag;
     if (!drag) return;
     const end = this.#endPoint(drag);
+    const endpoint = this.#endEndpoint(drag);
+    const anchor = (value: Endpoint) => (value.kind === 'object' ? value.anchor : undefined);
+    // Aperçu du tracé final : orthogonal si le connecteur le sera.
+    const path =
+      this.#snaps && context.style.routing === 'orthogonal'
+        ? orthogonalRoute(drag.startPoint, anchor(drag.start), end, anchor(endpoint))
+        : [drag.startPoint, end];
     ctx.save();
     ctx.strokeStyle = '#2563eb';
     ctx.fillStyle = '#2563eb';
     ctx.lineWidth = 2 / view.zoom;
     ctx.beginPath();
-    ctx.moveTo(drag.startPoint.x, drag.startPoint.y);
-    ctx.lineTo(end.x, end.y);
+    path.forEach((point, index) => {
+      if (index === 0) ctx.moveTo(point.x, point.y);
+      else ctx.lineTo(point.x, point.y);
+    });
     ctx.stroke();
-    if (this.#arrowEnd) paintArrowHead(ctx, drag.startPoint, end, 10 / view.zoom);
+    const before = path[path.length - 2] ?? drag.startPoint;
+    if (this.#arrowEnd) paintArrowHead(ctx, before, end, 10 / view.zoom);
     if (drag.target) paintAnchors(ctx, drag.target, view.zoom);
     ctx.restore();
   }
@@ -140,7 +159,8 @@ export class ConnectorTool implements Tool {
   }
 }
 
-function paintAnchors(ctx: CanvasRenderingContext2D, box: Box, zoom: number) {
+/** Ancrages d'une forme visée, pendant le tracé ou la reconnexion d'un connecteur. */
+export function paintAnchors(ctx: CanvasRenderingContext2D, box: Box, zoom: number) {
   const radius = 5 / zoom;
   ctx.lineWidth = 1.5 / zoom;
   for (const anchor of ['top', 'right', 'bottom', 'left'] as const) {

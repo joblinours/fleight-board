@@ -10,6 +10,9 @@ export {
   anchorPoint,
   arrowSize,
   type Box,
+  CONNECTOR_LABEL_FONT_SIZE,
+  connectorLabelBox,
+  connectorPath,
   connectorSegment,
   distanceToSegment,
   endpointPosition,
@@ -17,9 +20,13 @@ export {
   hitTestObject,
   nearestAnchor,
   objectBox,
+  orthogonalRoute,
   type Point,
+  pathMidpoint,
   polygonVertices,
+  ROUTE_STUB,
   type Segment,
+  simplifyPath,
 } from './geometry';
 export type { DocumentOperation, ObjectPatch } from './operations';
 export {

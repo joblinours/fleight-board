@@ -1,5 +1,7 @@
 import {
   BoardDocument,
+  CONNECTOR_LABEL_FONT_SIZE,
+  connectorPath,
   copyObjects,
   type DocumentOperation,
   deleteObjectsOperations,
@@ -10,13 +12,14 @@ import {
   objectBox,
   type Point,
   pasteOperations,
+  pathMidpoint,
   type RevertResult,
   UndoHistory,
   ungroupOperations,
   withFrameContents,
   zOrderOperations,
 } from '@fleight/document';
-import { type BoardObject, isShape } from '@fleight/protocol';
+import { type BoardObject, type ConnectorRouting, isShape } from '@fleight/protocol';
 import { createId } from '@fleight/shared';
 import { Camera } from '../camera';
 import { attachDomInput } from '../input/dom-input';
@@ -116,6 +119,8 @@ export type StyleChange = Partial<{
   fontSize: number;
   arrowStart: boolean;
   arrowEnd: boolean;
+  /** Tracé des connecteurs. */
+  routing: ConnectorRouting;
 }>;
 
 /** Délai sans nouvelle modification après lequel un réglage (curseur…) est terminé. */
@@ -133,6 +138,7 @@ export class BoardEditor {
     strokeWidth: 2,
     penSize: 4,
     opacity: 1,
+    routing: 'orthogonal',
   };
 
   readonly #scene = new Scene<BoardSceneItem>();
@@ -489,6 +495,7 @@ export class BoardEditor {
     if (change.fill !== undefined) this.style.fill = change.fill;
     if (change.strokeWidth !== undefined) this.style.strokeWidth = change.strokeWidth;
     if (change.opacity !== undefined) this.style.opacity = change.opacity;
+    if (change.routing !== undefined) this.style.routing = change.routing;
 
     const locks = this.#options.locks;
     const operations: DocumentOperation[] = [];
@@ -615,6 +622,10 @@ export class BoardEditor {
       ]);
     } else if (isShape(object)) {
       if (value !== object.label) this.apply([{ kind: 'update', id, patch: { label: value } }]);
+    } else if (object.type === 'connector') {
+      const label = value.trim();
+      if (label === (object.label ?? '')) return;
+      this.apply([{ kind: 'update', id, patch: { label: label || null } }]);
     } else if (object.type === 'frame') {
       const title = value.replace(/\s+/g, ' ').trim().slice(0, 200);
       if (title && title !== object.title) this.apply([{ kind: 'update', id, patch: { title } }]);
@@ -655,6 +666,23 @@ export class BoardEditor {
         height: object.height * zoom,
         fontSize: 16 * zoom,
         text: object.label,
+        align: 'center',
+      };
+    }
+    if (object.type === 'connector') {
+      // Zone centrée sur le milieu du tracé.
+      const path = connectorPath(this.document, object);
+      if (!path) return undefined;
+      const center = this.camera.worldToScreen(pathMidpoint(path));
+      const width = 180;
+      const height = CONNECTOR_LABEL_FONT_SIZE * 2.5 * zoom;
+      return {
+        x: center.x - width / 2,
+        y: center.y - height / 2,
+        width,
+        height,
+        fontSize: CONNECTOR_LABEL_FONT_SIZE * zoom,
+        text: object.label ?? '',
         align: 'center',
       };
     }
@@ -724,8 +752,17 @@ export class BoardEditor {
       if (!object) continue;
       const item = this.#scene.get(id);
       if (object.type === 'connector') {
-        if (item?.segment) {
-          for (const point of [item.segment.start, item.segment.end]) {
+        const path = item?.path;
+        if (path && path.length >= 2) {
+          // Tracé surligné, poignées de reconnexion aux extrémités.
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          path.forEach((point, index) => {
+            if (index === 0) ctx.moveTo(point.x, point.y);
+            else ctx.lineTo(point.x, point.y);
+          });
+          ctx.stroke();
+          for (const point of [path[0] as Point, path[path.length - 1] as Point]) {
             paintHandle(ctx, point, view.zoom, 'circle');
           }
         }
@@ -979,6 +1016,7 @@ export function stylePatch(object: BoardObject, change: StyleChange): Record<str
       if (change.strokeWidth !== undefined) patch.strokeWidth = Math.max(0.1, change.strokeWidth);
       if (change.arrowStart !== undefined) patch.arrowStart = change.arrowStart;
       if (change.arrowEnd !== undefined) patch.arrowEnd = change.arrowEnd;
+      if (change.routing !== undefined) patch.routing = change.routing;
       break;
     case 'text':
       if (change.stroke !== undefined) patch.color = change.stroke;

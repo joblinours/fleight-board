@@ -60,7 +60,7 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 | Dessin libre : stylo, surligneur, gomme, couleur, épaisseur, opacité | 🧪 Implémenté (M1.3) ; panneau de propriétés pour la sélection et les prochains objets |
 | Sélection, groupes, copier/coller, duplication | 🧪 Implémenté (M1.4) : rectangle de sélection, lasso, groupes, premier/arrière-plan ; copier/coller via le presse-papiers système, donc aussi d'un board à l'autre |
 | Frames (conteneurs titrés, exportables) | 🧪 Titre, fond, déplacement avec leur contenu (M1.4) ; export prévu |
-| Connecteurs droits/orthogonaux, ancrages, labels, suivi des objets | 🧪 Connecteurs droits ancrés qui suivent les objets (M0.4) |
+| Connecteurs droits/orthogonaux, ancrages, labels, suivi des objets | 🧪 Implémenté (M1.5) : tracé orthogonal à routage simple (sans contournement d'obstacles), pointes de flèche, labels, reconnexion par glisser |
 | Métadonnées structurées sur les objets | _(prévu)_ |
 
 ### Collaboration

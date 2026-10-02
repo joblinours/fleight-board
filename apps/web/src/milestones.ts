@@ -233,4 +233,21 @@ export const MILESTONES: Milestone[] = [
       'Double-tap sur le titre d’une frame pour le renommer ; Premier plan / Arrière-plan sur une forme.',
     ],
   },
+  {
+    id: 'M1.5',
+    title: 'Connecteurs',
+    summary:
+      'Connecteurs orthogonaux avec routage simple, flèches, labels et reconnexion par glisser.',
+    href: '#/',
+    linkLabel: 'Ouvrir un de mes boards (ci-dessus)',
+    needsApi: true,
+    multiDevice: true,
+    steps: [
+      'Outil Connecteur (C) entre deux formes : le tracé part de l’ancrage et suit des coudes à angle droit.',
+      'Déplacer une forme : le tracé se recalcule, chez l’autre participant aussi.',
+      'Sélectionner le connecteur, glisser une extrémité vers une autre forme : il s’y raccroche.',
+      'Double-tap sur le connecteur : saisir un label, affiché au milieu du tracé.',
+      'Panneau : tracé Orthogonal / Droit, pointes de flèche au début et à la fin.',
+    ],
+  },
 ];
