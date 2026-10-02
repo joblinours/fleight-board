@@ -254,7 +254,7 @@ Au-delà de l'objectif, sur un seul board : 100 utilisateurs → ACK p50 115 ms,
 ### Sortie de Phase 0 — go / no-go
 
 - [x] Rapport [`docs/poc-report.md`](poc-report.md) : mesures de performance, retour iPad, limites constatées
-- [ ] Revue avec toi avant de lancer la Phase 1
+- [x] Revue avec toi avant de lancer la Phase 1 → **GO** le 2026-10-02
 
 ---
 
@@ -371,6 +371,7 @@ Au-delà de l'objectif, sur un seul board : 100 utilisateurs → ACK p50 115 ms,
 | Date | Décision |
 |---|---|
 | 2026-10-01 | Plan validé ; décisions D1 à D22 actées |
+| 2026-10-02 | **Fin de Phase 0 : GO** pour la Phase 1 (rapport `docs/poc-report.md` validé) |
 | 2026-10-02 | M0.11 : **enregistrement groupé** (group commit) — les lots arrivés pendant l'enregistrement d'un board partent ensemble dans la transaction suivante, l'`ACK` restant postérieur à l'enregistrement. À 50 utilisateurs actifs, l'ACK passe de 340 ms (p50) à 8 ms : une transaction par lot plafonnait un board à ~190 lots/s |
 | 2026-10-02 | M0.11 : deux bugs de convergence trouvés par le test de charge (sur le vrai WebSocket, quand l'enregistrement prend du retard sur les états complets envoyés immédiatement) et corrigés côté client — (1) un lot diffusé après un `JOINED`/`SNAPSHOT` qui l'inclut déjà était réappliqué et ramenait des objets en arrière : un lot de séquence déjà connue est désormais ignoré ; (2) les lots envoyés avant une demande de resynchronisation étaient réappliqués par-dessus l'état complet qui les incluait déjà, écrasant des modifications plus récentes : ils sont retirés de la file à la réception de l'état. Le test en mémoire simule désormais un enregistrement lent pour couvrir ces cas |
 | 2026-10-02 | M0.11 : bug trouvé par le test à 50 utilisateurs et corrigé — un refus de verrou arrivé après qu'un renouvellement a obtenu ce verrou faisait oublier l'objet au client, qui ne le rendait pas (verrou fantôme jusqu'à l'expiration de 10 s) ; le client rend désormais tout verrou accordé qu'il ne demande plus |

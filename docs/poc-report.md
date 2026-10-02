@@ -12,7 +12,7 @@ La Phase 0 devait lever les trois risques majeurs du projet avant de construire 
 | Rendu | ✅ Levé | 20 000 objets (4× la cible) : 103,7 fps desktop, 51,1 fps iPad (écran 60 Hz) |
 | Synchronisation | ✅ Levé | 50 utilisateurs sur un board : ACK p50 8,5 ms, p95 18 ms, convergence systématique |
 
-**Recommandation : GO pour la Phase 1**, sous réserve des validations de la [section 7](#7-à-valider-par-toi-avant-le-go).
+**Décision : GO pour la Phase 1** (validée le 2 octobre 2026, [section 7](#7-validation-et-décision)).
 
 ## 2. Ce qui a été construit
 
@@ -112,11 +112,11 @@ Les tests aléatoires et de charge ont joué leur rôle : chacun de ces bugs ser
 7. **Pas encore de build de production de l'API** (prévu en M1.10) ni de déploiement Docker Compose complet.
 8. **Node 22 minimum** : ta machine est en Node 20 (voir section 7).
 
-## 7. À valider par toi avant le GO
+## 7. Validation et décision
 
-- [ ] **Collaboration PC ↔ iPad** : fiches M0.7 à M0.9 depuis l'iPad (verrou visible, undo individuel, mode Avion puis retour)
-- [ ] **Audit** : fiche M0.10, une ligne par action
-- [ ] **Charge** : relancer `pnpm load --users 20 --duration 60` en **Node 22**, sans navigateur ouvert, et me donner le p99
-- [ ] **Décision** : GO / NO-GO pour la Phase 1 (M1.1 — authentification et comptes)
+- [x] **Collaboration PC ↔ iPad** : fiches M0.7 à M0.9 depuis l'iPad (verrou visible, undo individuel, mode Avion puis retour)
+- [x] **Audit** : fiche M0.10, une ligne par action
+- [x] **Charge** : relancer `pnpm load --users 20 --duration 60` en **Node 22**, sans navigateur ouvert, et me donner le p99
+- [x] **Décision** : GO / NO-GO pour la Phase 1 (M1.1 — authentification et comptes)
 
-Une fois ces points validés : PR `dev` → `main` pour clôturer la Phase 0, puis démarrage de M1.1.
+**Décision du 2 octobre 2026 : GO.** Tous les points ci-dessus ont été validés par toi. La Phase 0 est close par la PR `dev` → `main` ; la Phase 1 démarre avec M1.1.
