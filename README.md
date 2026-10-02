@@ -2,12 +2,12 @@
 
 > Whiteboard collaboratif temps réel, self-hosted, Docker-first, extensible par plugins et conçu dès le départ pour desktop, tablette et Apple Pencil.
 
-![Statut](https://img.shields.io/badge/statut-phase%201%20(MVP)-blue)
-![Phase](https://img.shields.io/badge/phase-0%20%E2%80%94%20Proof%20of%20Concept-blue)
+![Statut](https://img.shields.io/badge/statut-d%C3%A9veloppement-orange)
+![Phase](https://img.shields.io/badge/phase-1%20%E2%80%94%20Core%20MVP-blue)
 ![Licence](https://img.shields.io/badge/licence-C8CL%20%2B%20commerciale-lightgrey)
 
 > [!WARNING]
-> **Projet en phase de conception.** Aucune version utilisable n'est encore disponible. Ce README décrit la cible du produit et sera mis à jour au fil de la réalisation. Les éléments marqués _(prévu)_ ne sont pas encore implémentés.
+> **Projet en développement.** La preuve de concept (Phase 0) est terminée ; aucune version utilisable en production n'est encore disponible. Ce README décrit la cible du produit et sera mis à jour au fil de la réalisation. Les éléments marqués _(prévu)_ ne sont pas encore implémentés.
 
 ---
 
