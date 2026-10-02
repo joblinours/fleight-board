@@ -1,5 +1,11 @@
-import { arrowSize, type Point, polygonVertices } from '@fleight/document';
-import type { ImageObject, ShapeObject, StrokeObject, TextObject } from '@fleight/protocol';
+import { arrowSize, FRAME_TITLE_BAND, type Point, polygonVertices } from '@fleight/document';
+import type {
+  FrameObject,
+  ImageObject,
+  ShapeObject,
+  StrokeObject,
+  TextObject,
+} from '@fleight/protocol';
 import { outlineToPath, strokeOutline } from '../ink/stroke';
 import type { ItemPainter } from '../renderer';
 import type { BoardSceneItem } from './scene-items';
@@ -152,6 +158,26 @@ function paintImage(ctx: CanvasRenderingContext2D, object: ImageObject, images?:
   ctx.strokeRect(object.x, object.y, object.width, object.height);
 }
 
+/** Frame : fond, bordure et titre dans le bandeau supérieur. */
+function paintFrame(ctx: CanvasRenderingContext2D, object: FrameObject) {
+  ctx.fillStyle = object.fill;
+  ctx.fillRect(object.x, object.y, object.width, object.height);
+  ctx.strokeStyle = '#94a3b8';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(object.x, object.y, object.width, object.height);
+  if (!object.title) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(object.x, object.y, object.width, FRAME_TITLE_BAND);
+  ctx.clip();
+  ctx.font = `600 16px ${FONT_FAMILY}`;
+  ctx.fillStyle = '#475569';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(object.title, object.x + 10, object.y + FRAME_TITLE_BAND / 2);
+  ctx.restore();
+}
+
 /** Applique l'opacité de l'objet autour de son dessin. */
 function withOpacity(painter: ItemPainter<BoardSceneItem>): ItemPainter<BoardSceneItem> {
   return (ctx, item, view) => {
@@ -177,6 +203,9 @@ export function createBoardPainters(
     polygon: withOpacity(paintShape),
     image: withOpacity((ctx, { object }) => {
       if (object.type === 'image') paintImage(ctx, object, images);
+    }),
+    frame: withOpacity((ctx, { object }) => {
+      if (object.type === 'frame') paintFrame(ctx, object);
     }),
     text: withOpacity(paintText),
     stroke: withOpacity(paintStrokeObject),

@@ -1046,3 +1046,14 @@ button.link {
 .auth-field.invalid input {
   border-color: #dc2626;
 }
+
+.board-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.board-actions button {
+  padding: 3px 6px;
+  font-size: 0.8rem;
+}

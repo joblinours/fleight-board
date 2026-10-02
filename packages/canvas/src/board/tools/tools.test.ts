@@ -32,7 +32,7 @@ describe('SelectTool', () => {
     const tool = new SelectTool();
     tool.down(context, at(10, 10), 'mouse');
     tool.move(context, [at(20, 15), at(40, 30)]);
-    tool.up();
+    tool.up(context);
 
     expect([...selection.ids]).toEqual(['a']);
     expect(document.get('a')).toMatchObject({ x: 30, y: 20 });
@@ -44,10 +44,12 @@ describe('SelectTool', () => {
     selection.set(['a']);
     context.modifiers.shift = true;
     tool.down(context, at(500, 500), 'mouse');
+    tool.up(context);
     expect(selection.size).toBe(1);
 
     context.modifiers.shift = false;
     tool.down(context, at(500, 500), 'mouse');
+    tool.up(context);
     expect(selection.size).toBe(0);
   });
 
@@ -58,12 +60,12 @@ describe('SelectTool', () => {
     ]);
     const tool = new SelectTool();
     tool.down(context, at(10, 10), 'mouse');
-    tool.up();
+    tool.up(context);
     context.modifiers.shift = true;
     tool.down(context, at(210, 10), 'mouse');
     context.modifiers.shift = false;
     tool.move(context, [at(220, 20)]);
-    tool.up();
+    tool.up(context);
 
     expect(selection.size).toBe(2);
     expect(document.get('a')).toMatchObject({ x: 10, y: 10 });
@@ -76,7 +78,7 @@ describe('SelectTool', () => {
     selection.set(['a']);
     tool.down(context, at(100, 50), 'mouse');
     tool.move(context, [at(150, 90)]);
-    tool.up();
+    tool.up(context);
 
     expect(document.get('a')).toMatchObject({ x: 0, y: 0, width: 150, height: 90 });
   });
@@ -85,7 +87,7 @@ describe('SelectTool', () => {
     const { context, calls } = createTestContext([rect('a', 0, 0)]);
     const tool = new SelectTool();
     tool.down(context, at(10, 10), 'touch');
-    tool.up();
+    tool.up(context);
     tool.down(context, at(11, 10), 'touch');
 
     expect(calls.editText).toEqual(['a']);
@@ -104,7 +106,7 @@ describe('SelectTool — verrous', () => {
     const tool = new SelectTool();
     tool.down(context, at(10, 10), 'mouse');
     tool.move(context, [at(60, 60)]);
-    tool.up();
+    tool.up(context);
 
     expect(selection.size).toBe(0);
     expect(document.get('a')).toMatchObject({ x: 0, y: 0 });

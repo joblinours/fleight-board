@@ -13,6 +13,7 @@ export {
   connectorSegment,
   distanceToSegment,
   endpointPosition,
+  FRAME_TITLE_BAND,
   hitTestObject,
   nearestAnchor,
   objectBox,
@@ -21,4 +22,14 @@ export {
   type Segment,
 } from './geometry';
 export type { DocumentOperation, ObjectPatch } from './operations';
+export {
+  copyObjects,
+  expandGroups,
+  frameContents,
+  groupOperations,
+  pasteOperations,
+  ungroupOperations,
+  withFrameContents,
+  zOrderOperations,
+} from './structure';
 export { equal, type RevertOptions, type RevertResult, UndoHistory } from './undo-history';

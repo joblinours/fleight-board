@@ -12,6 +12,9 @@ export type Point = { x: number; y: number };
 export type Box = { x: number; y: number; width: number; height: number };
 export type Segment = { start: Point; end: Point };
 
+/** Hauteur du bandeau de titre d'une frame, en unités monde. */
+export const FRAME_TITLE_BAND = 32;
+
 export const ANCHORS: readonly Anchor[] = ['top', 'right', 'bottom', 'left'];
 
 export function anchorPoint(box: Box, anchor: Anchor): Point {
@@ -124,6 +127,17 @@ export function hitTestObject(
       return hitTestStroke(object, point, tolerance);
     case 'polygon':
       return hitTestPolygon(object, point, tolerance);
+    case 'frame': {
+      // Une frame se saisit par son bord ou son bandeau de titre : un appui sur
+      // la zone vide à l'intérieur reste libre (sélection au rectangle, contenu).
+      if (!inBox(object, point, tolerance)) return false;
+      const inside =
+        point.x > object.x + tolerance &&
+        point.x < object.x + object.width - tolerance &&
+        point.y > object.y + Math.max(tolerance, FRAME_TITLE_BAND) &&
+        point.y < object.y + object.height - tolerance;
+      return !inside;
+    }
     default:
       return inBox(object, point, tolerance);
   }

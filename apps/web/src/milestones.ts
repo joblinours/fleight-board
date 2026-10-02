@@ -216,4 +216,21 @@ export const MILESTONES: Milestone[] = [
       'Sélectionner une forme : remplissage « aucun », épaisseur, opacité ; Ctrl+Z annule le réglage d’un coup.',
     ],
   },
+  {
+    id: 'M1.4',
+    title: 'Sélection, groupes, frames',
+    summary:
+      'Rectangle de sélection et lasso, copier/coller/dupliquer, groupes, premier/arrière-plan et frames.',
+    href: '#/',
+    linkLabel: 'Ouvrir un de mes boards (ci-dessus)',
+    needsApi: true,
+    multiDevice: true,
+    steps: [
+      'Glisser dans le vide pour sélectionner plusieurs objets ; outil Lasso (Q) pour entourer à main levée.',
+      'Grouper (Ctrl+G ou bouton) : un appui sur un membre sélectionne et déplace tout le groupe.',
+      'Copier (Ctrl+C), puis coller (Ctrl+V) dans un autre board ; Ctrl+D duplique.',
+      'Frame (F) : tirer un cadre autour d’objets, puis la déplacer par son titre : le contenu suit.',
+      'Double-tap sur le titre d’une frame pour le renommer ; Premier plan / Arrière-plan sur une forme.',
+    ],
+  },
 ];
