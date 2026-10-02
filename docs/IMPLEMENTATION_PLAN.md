@@ -253,7 +253,7 @@ Au-delà de l'objectif, sur un seul board : 100 utilisateurs → ACK p50 115 ms,
 
 ### Sortie de Phase 0 — go / no-go
 
-- [ ] Rapport `docs/poc-report.md` : mesures de performance, retour iPad, limites constatées
+- [x] Rapport [`docs/poc-report.md`](poc-report.md) : mesures de performance, retour iPad, limites constatées
 - [ ] Revue avec toi avant de lancer la Phase 1
 
 ---
