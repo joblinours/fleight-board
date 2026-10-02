@@ -40,10 +40,10 @@ describe('syncScene', () => {
     syncScene(document, scene);
 
     expect(scene.size).toBe(2);
-    expect(scene.get('c')?.segment?.start).toEqual({ x: 100, y: 25 });
+    expect(scene.get('c')?.path?.[0]).toEqual({ x: 100, y: 25 });
 
     document.apply([{ kind: 'update', id: 'a', patch: { y: 100 } }]);
-    expect(scene.get('c')?.segment?.start).toEqual({ x: 100, y: 125 });
+    expect(scene.get('c')?.path?.[0]).toEqual({ x: 100, y: 125 });
   });
 
   it('retire de la scène un connecteur dont l’objet a disparu', () => {

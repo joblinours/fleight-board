@@ -395,7 +395,8 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
       )}
 
       <p className="board-help">
-        Double-tap / double-clic sur une forme pour éditer son texte (ou le titre d’une frame) ·
+        Double-tap / double-clic sur une forme pour éditer son texte (le titre d’une frame, le label
+        d’un connecteur) · Glisser l’extrémité d’un connecteur sélectionné pour le reconnecter ·
         Glisser dans le vide pour sélectionner · Suppr pour supprimer · Échap pour revenir à la
         sélection
       </p>

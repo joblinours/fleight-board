@@ -103,6 +103,8 @@ export const EndpointSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('point'), x: coordinate, y: coordinate }),
 ]);
 
+export const ConnectorRoutingSchema = z.enum(['straight', 'orthogonal']);
+
 export const ConnectorSchema = z.object({
   type: z.literal('connector'),
   ...base,
@@ -112,6 +114,10 @@ export const ConnectorSchema = z.object({
   strokeWidth: z.number().finite().min(0.1).max(100),
   arrowStart: z.boolean(),
   arrowEnd: z.boolean(),
+  /** Tracé : droit (par défaut) ou orthogonal (segments horizontaux et verticaux). */
+  routing: ConnectorRoutingSchema.optional(),
+  /** Texte affiché au milieu du tracé. */
+  label: z.string().max(500).optional(),
 });
 
 export const BoardObjectSchema = z.discriminatedUnion('type', [
@@ -134,6 +140,7 @@ export type TextObject = z.infer<typeof TextSchema>;
 export type StrokeObject = z.infer<typeof StrokeSchema>;
 export type ConnectorObject = z.infer<typeof ConnectorSchema>;
 export type Anchor = z.infer<typeof AnchorSchema>;
+export type ConnectorRouting = z.infer<typeof ConnectorRoutingSchema>;
 export type Endpoint = z.infer<typeof EndpointSchema>;
 export type BoardObject = z.infer<typeof BoardObjectSchema>;
 export type BoardObjectType = BoardObject['type'];

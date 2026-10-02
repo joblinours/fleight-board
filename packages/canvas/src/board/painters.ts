@@ -1,4 +1,12 @@
-import { arrowSize, FRAME_TITLE_BAND, type Point, polygonVertices } from '@fleight/document';
+import {
+  arrowSize,
+  type Box,
+  CONNECTOR_LABEL_FONT_SIZE,
+  connectorLabelBox,
+  FRAME_TITLE_BAND,
+  type Point,
+  polygonVertices,
+} from '@fleight/document';
 import type {
   FrameObject,
   ImageObject,
@@ -112,20 +120,41 @@ function paintPath(ctx: CanvasRenderingContext2D, object: StrokeObject, path: Pa
   ctx.restore();
 }
 
-const paintConnector: ItemPainter<BoardSceneItem> = (ctx, { object, segment }) => {
-  if (object.type !== 'connector' || !segment) return;
+const paintConnector: ItemPainter<BoardSceneItem> = (ctx, { object, path }) => {
+  if (object.type !== 'connector' || !path || path.length < 2) return;
   ctx.strokeStyle = object.stroke;
   ctx.fillStyle = object.stroke;
   ctx.lineWidth = object.strokeWidth;
   ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
   ctx.beginPath();
-  ctx.moveTo(segment.start.x, segment.start.y);
-  ctx.lineTo(segment.end.x, segment.end.y);
+  const [first, ...rest] = path as [Point, ...Point[]];
+  ctx.moveTo(first.x, first.y);
+  for (const point of rest) ctx.lineTo(point.x, point.y);
   ctx.stroke();
   const size = arrowSize(object.strokeWidth);
-  if (object.arrowEnd) paintArrowHead(ctx, segment.start, segment.end, size);
-  if (object.arrowStart) paintArrowHead(ctx, segment.end, segment.start, size);
+  const last = path.length - 1;
+  if (object.arrowEnd) paintArrowHead(ctx, path[last - 1] as Point, path[last] as Point, size);
+  if (object.arrowStart) paintArrowHead(ctx, path[1] as Point, path[0] as Point, size);
+  const label = connectorLabelBox(object, path);
+  if (label && object.label) paintConnectorLabel(ctx, object.label, label, object.stroke);
 };
+
+/** Label d'un connecteur : texte centré sur un fond blanc qui interrompt le trait. */
+function paintConnectorLabel(ctx: CanvasRenderingContext2D, text: string, box: Box, color: string) {
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(box.x, box.y, box.width, box.height);
+  ctx.fillStyle = color;
+  ctx.font = `${CONNECTOR_LABEL_FONT_SIZE}px ${FONT_FAMILY}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const lines = text.trim().split('\n');
+  const lineHeight = CONNECTOR_LABEL_FONT_SIZE * 1.25;
+  const top = box.y + box.height / 2 - ((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((line, index) => {
+    ctx.fillText(line, box.x + box.width / 2, top + index * lineHeight);
+  });
+}
 
 /** Pointe de flèche en `to`, orientée selon le segment from → to. */
 export function paintArrowHead(

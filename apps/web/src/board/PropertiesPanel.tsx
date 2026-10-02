@@ -6,7 +6,7 @@ const COLORS = ['#1f2937', '#2563eb', '#dc2626', '#16a34a', '#f59e0b', '#7c3aed'
 const FILLS = ['transparent', '#ffffff', '#dbeafe', '#fee2e2', '#dcfce7', '#fef3c7', '#ede9fe'];
 const FONT_SIZES = [12, 16, 20, 24, 32, 48, 64, 96];
 
-type Field = 'stroke' | 'fill' | 'strokeWidth' | 'opacity' | 'fontSize' | 'arrows';
+type Field = 'stroke' | 'fill' | 'strokeWidth' | 'opacity' | 'fontSize' | 'arrows' | 'routing';
 
 /** Propriétés réglables par type d'objet. */
 const FIELDS: Record<BoardObject['type'], Field[]> = {
@@ -14,7 +14,7 @@ const FIELDS: Record<BoardObject['type'], Field[]> = {
   ellipse: ['stroke', 'fill', 'strokeWidth', 'opacity'],
   polygon: ['stroke', 'fill', 'strokeWidth', 'opacity'],
   text: ['stroke', 'fontSize', 'opacity'],
-  connector: ['stroke', 'strokeWidth', 'arrows', 'opacity'],
+  connector: ['stroke', 'strokeWidth', 'arrows', 'routing', 'opacity'],
   stroke: ['stroke', 'strokeWidth', 'opacity'],
   image: ['opacity'],
   frame: ['fill', 'opacity'],
@@ -26,7 +26,7 @@ const TOOL_FIELDS: Partial<Record<ToolName, Field[]>> = {
   ellipse: FIELDS.ellipse,
   polygon: FIELDS.polygon,
   text: ['stroke'],
-  connector: ['stroke', 'strokeWidth', 'opacity'],
+  connector: ['stroke', 'strokeWidth', 'routing', 'opacity'],
   line: ['stroke', 'strokeWidth', 'opacity'],
   arrow: ['stroke', 'strokeWidth', 'opacity'],
   pen: ['stroke', 'strokeWidth', 'opacity'],
@@ -44,6 +44,7 @@ function currentValues(editor: BoardEditor, object: BoardObject | undefined) {
     fontSize: 24,
     arrowStart: false,
     arrowEnd: true,
+    routing: style.routing,
   };
   if (!object) return values;
   values.opacity = object.opacity ?? 1;
@@ -64,6 +65,7 @@ function currentValues(editor: BoardEditor, object: BoardObject | undefined) {
         strokeWidth: object.strokeWidth,
         arrowStart: object.arrowStart,
         arrowEnd: object.arrowEnd,
+        routing: object.routing ?? 'straight',
       };
     case 'text':
       return { ...values, stroke: object.color, fontSize: object.fontSize };
@@ -249,6 +251,20 @@ export function PropertiesPanel({ editor, tool }: { editor: BoardEditor | null; 
             />{' '}
             fin
           </label>
+        </Row>
+      )}
+      {fields.has('routing') && (
+        <Row label="Tracé">
+          <select
+            aria-label="Tracé du connecteur"
+            value={values.routing}
+            onChange={(event) =>
+              apply({ routing: event.target.value as 'straight' | 'orthogonal' })
+            }
+          >
+            <option value="orthogonal">Orthogonal</option>
+            <option value="straight">Droit</option>
+          </select>
         </Row>
       )}
       {fields.has('opacity') && (

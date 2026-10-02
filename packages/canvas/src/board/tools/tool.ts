@@ -1,5 +1,5 @@
 import type { BoardDocument, DocumentOperation, Point } from '@fleight/document';
-import type { BoardObject } from '@fleight/protocol';
+import type { BoardObject, ConnectorRouting } from '@fleight/protocol';
 import type { PointerKind } from '../../input/input-router';
 import type { ViewState } from '../../renderer';
 import type { Selection } from '../selection';
@@ -31,6 +31,8 @@ export type ToolStyle = {
   penSize: number;
   /** Opacité des objets créés (le surligneur a la sienne). */
   opacity: number;
+  /** Tracé des connecteurs créés avec l'outil Connecteur (ligne et flèche restent droites). */
+  routing: ConnectorRouting;
 };
 
 /** Participant qui modifie un objet. */
