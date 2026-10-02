@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app';
 import { connectDatabase, type Database } from '../database';
 import { PostgresBoardStore } from '../db/board-store';
+import { identifyAnyone } from '../test-helpers';
 import { runLoad } from './load-test';
 
 /**
@@ -23,6 +24,7 @@ describe('test de charge (WebSocket)', () => {
     const db = database?.db;
     app = await buildApp({
       database: { ping: async () => true },
+      identify: identifyAnyone,
       createHub: (log) =>
         new CollaborationHub({ log, ...(db ? { store: new PostgresBoardStore(db) } : {}) }),
     });

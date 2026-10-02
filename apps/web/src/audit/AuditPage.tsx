@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 /** Rafraîchissement automatique de la liste. */
 const REFRESH_MS = 2000;
 
-const ACTIONS: Record<AuditRecord['action'], string> = {
+const ACTIONS: Partial<Record<AuditRecord['action'], string>> = {
   'object.create': 'Création',
   'object.update': 'Modification',
   'object.delete': 'Suppression',
@@ -83,7 +83,7 @@ export function AuditPage({ boardId }: { boardId: string }) {
                     {entry.metadata.actorName ?? shortId(entry.actor)}
                   </td>
                   <td>
-                    {ACTIONS[entry.action]}
+                    {ACTIONS[entry.action] ?? entry.action}
                     {entry.metadata.intent && (
                       <span className={`audit-intent ${entry.metadata.intent}`}>
                         {INTENTS[entry.metadata.intent]}

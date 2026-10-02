@@ -166,4 +166,22 @@ export const MILESTONES: Milestone[] = [
       'À la fin, le terminal affiche les latences et « convergé » ; « Recadrer » montre le même board partout.',
     ],
   },
+  {
+    id: 'M1.1',
+    title: 'Comptes et connexion',
+    summary: 'Connexion par mot de passe, sessions, demandes de compte, administration.',
+    href: '#/admin',
+    linkLabel: 'Administration',
+    needsApi: true,
+    multiDevice: true,
+    steps: [
+      'Se connecter avec l’Admin affiché par ./scripts/dev.sh (« Admin : admin / … »).',
+      'Sur l’iPad : « Demander un compte » ; la connexion répond « en attente de validation ».',
+      'Sur le PC, Administration : « Valider » la demande ; l’iPad peut alors se connecter.',
+      'Ouvrir un board des deux côtés : chacun apparaît sous le nom de son compte.',
+      'Sur le PC : « Désactiver » le compte de l’iPad → l’iPad est déconnecté et renvoyé à la connexion.',
+      '« Réinitialiser le mot de passe » : l’iPad se connecte avec le mot de passe temporaire et doit le changer.',
+      '5 mauvais mots de passe d’affilée bloquent le compte 15 minutes.',
+    ],
+  },
 ];

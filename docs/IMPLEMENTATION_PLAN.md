@@ -264,12 +264,14 @@ Au-delà de l'objectif, sur un seul board : 100 utilisateurs → ACK p50 115 ms,
 
 ### M1.1 — Authentification et comptes
 
-- [ ] Login username/email + mot de passe (Argon2id)
-- [ ] Sessions en cookie `HttpOnly`/`Secure`/`SameSite`, expiration et rotation
-- [ ] Rate limiting et protection brute force
-- [ ] Premier Admin créé au démarrage via variables d'environnement
-- [ ] Admin : créer / désactiver / supprimer des comptes, réinitialiser un mot de passe
-- [ ] Demande de création de compte depuis l'interface
+- [x] Login username/email + mot de passe (Argon2id)
+- [x] Sessions en cookie `HttpOnly`/`Secure`/`SameSite`, expiration et rotation
+- [x] Rate limiting et protection brute force
+- [x] Premier Admin créé au démarrage via variables d'environnement
+- [x] Admin : créer / désactiver / supprimer des comptes, réinitialiser un mot de passe
+- [x] Demande de création de compte depuis l'interface
+
+→ **Validé** : tests PostgreSQL (connexion par nom ou e-mail, cookie, blocage après 5 échecs, limite par IP, renouvellement et expiration des sessions, demande puis validation, mot de passe temporaire, révocation, droits Admin, contrôle d'origine, WebSocket authentifié et fermé à la désactivation) et parcours complet dans deux navigateurs.
 
 ### M1.2 — Whiteboards
 
@@ -371,6 +373,7 @@ Au-delà de l'objectif, sur un seul board : 100 utilisateurs → ACK p50 115 ms,
 | Date | Décision |
 |---|---|
 | 2026-10-01 | Plan validé ; décisions D1 à D22 actées |
+| 2026-10-02 | M1.1 : l'auteur journalisé devient l'**utilisateur** (nom du compte affiché aux autres participants) ; la détection de conflits reste par **client** (deux appareils d'un même compte sont traités comme deux participants). Le WebSocket exige une session ; l'audit d'un board est réservé aux Admins en attendant les propriétaires (M1.2). Cookie `Secure` seulement en HTTPS, pour que l'iPad fonctionne en HTTP sur le réseau local de développement |
 | 2026-10-02 | **Fin de Phase 0 : GO** pour la Phase 1 (rapport `docs/poc-report.md` validé) |
 | 2026-10-02 | M0.11 : **enregistrement groupé** (group commit) — les lots arrivés pendant l'enregistrement d'un board partent ensemble dans la transaction suivante, l'`ACK` restant postérieur à l'enregistrement. À 50 utilisateurs actifs, l'ACK passe de 340 ms (p50) à 8 ms : une transaction par lot plafonnait un board à ~190 lots/s |
 | 2026-10-02 | M0.11 : deux bugs de convergence trouvés par le test de charge (sur le vrai WebSocket, quand l'enregistrement prend du retard sur les états complets envoyés immédiatement) et corrigés côté client — (1) un lot diffusé après un `JOINED`/`SNAPSHOT` qui l'inclut déjà était réappliqué et ramenait des objets en arrière : un lot de séquence déjà connue est désormais ignoré ; (2) les lots envoyés avant une demande de resynchronisation étaient réappliqués par-dessus l'état complet qui les incluait déjà, écrasant des modifications plus récentes : ils sont retirés de la file à la réception de l'état. Le test en mémoire simule désormais un enregistrement lent pour couvrir ces cas |

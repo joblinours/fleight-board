@@ -1,12 +1,14 @@
 import type { AuditRecord } from '@fleight/protocol';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, isNull } from 'drizzle-orm';
 import type { Db } from '../database';
 import { auditLogs } from './schema';
 
-/** Lecture de l'audit d'un board. */
+/** Lecture de l'audit. */
 export type AuditLogReader = {
-  /** Entrées les plus récentes d'abord. */
+  /** Entrées d'un board, les plus récentes d'abord. */
   list(boardId: string, limit: number): Promise<AuditRecord[]>;
+  /** Événements de compte et d'administration, les plus récents d'abord. */
+  listAccounts(limit: number): Promise<AuditRecord[]>;
 };
 
 export class PostgresAuditLog implements AuditLogReader {
@@ -23,9 +25,20 @@ export class PostgresAuditLog implements AuditLogReader {
       .where(eq(auditLogs.boardId, boardId))
       .orderBy(desc(auditLogs.id))
       .limit(limit);
-    return rows.map(({ boardId: _boardId, createdAt, ...row }) => ({
-      ...row,
-      createdAt: createdAt.toISOString(),
-    }));
+    return rows.map(toRecord);
   }
+
+  async listAccounts(limit: number): Promise<AuditRecord[]> {
+    const rows = await this.#db
+      .select()
+      .from(auditLogs)
+      .where(isNull(auditLogs.boardId))
+      .orderBy(desc(auditLogs.id))
+      .limit(limit);
+    return rows.map(toRecord);
+  }
+}
+
+function toRecord({ createdAt, ...row }: typeof auditLogs.$inferSelect): AuditRecord {
+  return { ...row, createdAt: createdAt.toISOString() };
 }

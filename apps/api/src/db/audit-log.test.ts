@@ -1,9 +1,13 @@
 import { createId } from '@fleight/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app';
+import { AuthService } from '../auth/auth-service';
+import { hashPassword } from '../auth/passwords';
+import { SESSION_COOKIE } from '../auth/routes';
 import { connectDatabase, type Database } from '../database';
 import { PostgresAuditLog } from './audit-log';
 import { PostgresBoardStore } from './board-store';
+import { users } from './schema';
 
 /** Tests sur un vrai PostgreSQL, ignorés sans TEST_DATABASE_URL (voir board-store.test.ts). */
 const url = process.env.TEST_DATABASE_URL;
@@ -76,6 +80,7 @@ describe.skipIf(!url)('audit_logs', () => {
         actor: 'alice',
         actorType: 'client',
         action: 'object.delete',
+        boardId,
         objectId: 'a',
         sessionId: null,
         metadata: { seq: 3, intent: 'undo' },
@@ -84,6 +89,7 @@ describe.skipIf(!url)('audit_logs', () => {
         actor: 'bob',
         actorType: 'client',
         action: 'object.update',
+        boardId,
         objectId: 'a',
         sessionId: 'conn-2',
         metadata: { seq: 2, gestureId: 'g1', fields: ['x', 'y'] },
@@ -92,6 +98,7 @@ describe.skipIf(!url)('audit_logs', () => {
         actor: 'alice',
         actorType: 'client',
         action: 'object.create',
+        boardId,
         objectId: 'a',
         sessionId: 'conn-1',
         metadata: { seq: 1, objectType: 'rectangle' },
@@ -111,13 +118,36 @@ describe.skipIf(!url)('audit_logs', () => {
         { seq: 1, actor: 'alice', operations: [{ kind: 'create', object: rectangle('a') }] },
       ],
     });
-    const app = await buildApp({ database: { ping: async () => true }, audit });
+    const auth = new AuthService(database.db);
+    const app = await buildApp({ database: { ping: async () => true }, auth, audit });
+    const username = `admin-${createId().slice(-10).toLowerCase()}`;
+    await database.db.insert(users).values({
+      id: createId(),
+      username,
+      displayName: 'Admin',
+      passwordHash: await hashPassword('mot-de-passe-admin'),
+      role: 'admin',
+    });
+    const login = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { identifier: username, password: 'mot-de-passe-admin' },
+    });
+    const cookies = { [SESSION_COOKIE]: login.cookies[0]?.value as string };
 
-    const response = await app.inject({ method: 'GET', url: `/boards/${boardId}/audit` });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/boards/${boardId}/audit`,
+      cookies,
+    });
     expect(response.statusCode).toBe(200);
     expect(response.json().entries).toMatchObject([{ actor: 'alice', action: 'object.create' }]);
 
-    const invalid = await app.inject({ method: 'GET', url: `/boards/${boardId}/audit?limit=0` });
+    const invalid = await app.inject({
+      method: 'GET',
+      url: `/boards/${boardId}/audit?limit=0`,
+      cookies,
+    });
     expect(invalid.statusCode).toBe(400);
     await app.close();
   });

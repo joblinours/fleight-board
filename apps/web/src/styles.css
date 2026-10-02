@@ -520,3 +520,270 @@ body {
   background: #dbeafe;
   color: #1e40af;
 }
+
+.page-status {
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+button.link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: LinkText;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.home-account {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin: 0;
+  font-size: 0.92em;
+}
+
+.auth {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem 1rem;
+  box-sizing: border-box;
+  overflow-y: auto;
+  touch-action: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 24rem;
+  padding: 1.5rem;
+  border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+  border-radius: 14px;
+  box-sizing: border-box;
+}
+
+.auth-card h1 {
+  margin: 0.25rem 0 1rem;
+  font-size: 1.4rem;
+}
+
+.auth-card h2 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.auth-brand {
+  margin: 0;
+  font-weight: 700;
+}
+
+.auth-brand a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.auth-card form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.auth-field {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.auth-field span {
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
+.auth-field input {
+  padding: 0.55rem 0.65rem;
+  border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+  border-radius: 8px;
+  font: inherit;
+  /* 16 px minimum : Safari iOS ne zoome pas sur le champ. */
+  font-size: max(16px, 1em);
+}
+
+.auth-field small {
+  color: GrayText;
+}
+
+.auth-card button[type="submit"] {
+  padding: 0.6rem;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 600;
+}
+
+.auth-card button[type="submit"]:disabled {
+  opacity: 0.6;
+}
+
+.auth-error,
+.auth-warning,
+.auth-success {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+}
+
+.auth-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.auth-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.auth-success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.auth-alt {
+  margin: 1rem 0 0;
+  font-size: 0.92em;
+}
+
+.auth-profile {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0;
+}
+
+.auth-profile dd {
+  margin: 0;
+}
+
+.admin {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+  box-sizing: border-box;
+  height: 100%;
+  overflow-y: auto;
+  touch-action: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.admin nav {
+  display: flex;
+  gap: 1rem;
+}
+
+.admin table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+.admin th,
+.admin td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+  text-align: left;
+  vertical-align: top;
+}
+
+.admin-scroll {
+  overflow-x: auto;
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.admin button,
+.admin select,
+.admin input {
+  padding: 0.3rem 0.55rem;
+  border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+  border-radius: 6px;
+  background: Canvas;
+  color: CanvasText;
+  font: inherit;
+  font-size: max(16px, 0.92em);
+}
+
+.admin button.danger {
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
+.admin-requests {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.admin-requests li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.admin-requests span {
+  flex: 1;
+}
+
+.admin-create {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.admin-hint {
+  color: GrayText;
+  font-size: 0.9em;
+}
+
+.admin-message {
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+}
+
+.admin-message.error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.admin-message.info {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.admin-secret {
+  padding: 0.75rem 1rem;
+  border: 2px solid #f59e0b;
+  border-radius: 10px;
+  background: #fffbeb;
+  color: #78350f;
+}
+
+.admin-secret code {
+  display: inline-block;
+  margin: 0 0.75rem 0.5rem 0;
+  font-size: 1.2em;
+  user-select: all;
+}
+
+.auth-field.invalid input {
+  border-color: #dc2626;
+}

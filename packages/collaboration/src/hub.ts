@@ -126,14 +126,17 @@ export class CollaborationHub {
     connectionId: string,
     send: (message: ServerSessionMessage) => void,
     disconnect?: () => void,
+    /** Utilisateur authentifié : auteur journalisé et nom affiché aux autres participants. */
+    user?: { id: string; name: string },
   ): HubConnection {
     let joined:
       | { boardId: string; loaded: LoadedRoom; unsubscribe: Unsubscribe; clientId: string }
       | undefined;
     let gesture: OpenGesture | undefined;
-    /** Auteur journalisé : le client (stable à travers les reconnexions). */
-    let actor = connectionId;
-    let actorName: string | undefined;
+    /** Auteur journalisé : l'utilisateur, à défaut le client (stable à travers les reconnexions). */
+    let actor = user?.id ?? connectionId;
+    let actorName: string | undefined = user?.name;
+    const actorType = user ? ('user' as const) : ('client' as const);
     // Les messages d'une connexion sont traités l'un après l'autre (le JOIN est asynchrone).
     let queue = Promise.resolve();
     if (disconnect) this.#disconnects.set(connectionId, disconnect);
@@ -145,6 +148,7 @@ export class CollaborationHub {
         seq: gesture.seq,
         actor,
         session: connectionId,
+        actorType,
         ...(actorName ? { actorName } : {}),
         gestureId: gesture.id,
         operations: compactOperations(gesture.operations),
@@ -177,7 +181,7 @@ export class CollaborationHub {
         case 'JOIN': {
           leave();
           const loaded = await this.#join(message.boardId);
-          const participant = { connectionId, name: message.name };
+          const participant = { connectionId, name: user?.name ?? message.name };
           loaded.participants.set(connectionId, participant);
           const unsubscribe = this.#pubsub.subscribe(
             channel(message.boardId),
@@ -186,8 +190,11 @@ export class CollaborationHub {
             },
           );
           joined = { boardId: message.boardId, loaded, unsubscribe, clientId: message.clientId };
-          actor = message.clientId;
-          actorName = message.name;
+          // Sans compte, le client (stable à travers les reconnexions) tient lieu d'auteur.
+          if (!user) {
+            actor = message.clientId;
+            actorName = message.name;
+          }
           send({
             type: 'JOINED',
             self: connectionId,
@@ -306,6 +313,7 @@ export class CollaborationHub {
               seq: result.seq,
               actor,
               session: connectionId,
+              actorType,
               ...(actorName ? { actorName } : {}),
               operations: message.operations,
               ...(message.intent ? { intent: message.intent } : {}),
