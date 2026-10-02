@@ -18,7 +18,7 @@ import {
   type PointerKind,
   type PointerSample,
 } from '../input/input-router';
-import { CanvasRenderer, type ViewState } from '../renderer';
+import { CanvasRenderer, type Page, type ViewState } from '../renderer';
 import { Scene } from '../scene';
 import { HANDLE_SIZE_PX, HANDLES, handlePosition } from './handles';
 import { boardPainters } from './painters';
@@ -80,6 +80,8 @@ export type BoardEditorOptions = {
   onHistoryChange?(state: { canUndo: boolean; canRedo: boolean }): void;
   /** Une annulation n'a pas pu tout restaurer (objets supprimés ou modifiés par d'autres). */
   onUndoSkipped?(result: RevertResult & { intent: 'undo' | 'redo' }): void;
+  /** Page d'un canvas standard ; absente : canvas infini. */
+  page?: Page;
 };
 
 /** Éditeur de whiteboard local : document, rendu, entrées, outils et sélection. */
@@ -124,6 +126,7 @@ export class BoardEditor {
       scene: this.#scene,
       camera: this.camera,
       painters: boardPainters,
+      ...(options.page ? { page: options.page } : {}),
     });
     this.#overlayRenderer = new CanvasRenderer({
       canvas: options.overlayCanvas,
@@ -294,9 +297,26 @@ export class BoardEditor {
     this.selection.set([...this.document.all()].map(({ id }) => id));
   }
 
-  /** Cadre l'ensemble des objets. */
+  /** Page du canvas (standard) ; `undefined` : canvas infini. */
+  setPage(page: Page | undefined): void {
+    this.#sceneRenderer.page = page;
+    this.#invalidate();
+  }
+
+  /** Cadre l'ensemble des objets, et la page d'un canvas standard. */
   fitContent(): void {
-    const bounds = this.#scene.contentBounds();
+    const content = this.#scene.contentBounds();
+    const page = this.#sceneRenderer.page;
+    const pageBounds = page ? { minX: 0, minY: 0, maxX: page.width, maxY: page.height } : undefined;
+    const bounds =
+      content && pageBounds
+        ? {
+            minX: Math.min(content.minX, pageBounds.minX),
+            minY: Math.min(content.minY, pageBounds.minY),
+            maxX: Math.max(content.maxX, pageBounds.maxX),
+            maxY: Math.max(content.maxY, pageBounds.maxY),
+          }
+        : (content ?? pageBounds);
     if (!bounds) return;
     const { width, height } = this.#sceneRenderer.viewport;
     this.camera.fitBounds(bounds, width, height, 96);

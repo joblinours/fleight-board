@@ -4,7 +4,9 @@ import { buildApp } from '../app';
 import { AuthService } from '../auth/auth-service';
 import { hashPassword } from '../auth/passwords';
 import { SESSION_COOKIE } from '../auth/routes';
+import { BoardService } from '../boards/board-service';
 import { connectDatabase, type Database } from '../database';
+import { createTestBoard } from '../test-helpers';
 import { PostgresAuditLog } from './audit-log';
 import { PostgresBoardStore } from './board-store';
 import { users } from './schema';
@@ -43,6 +45,7 @@ describe.skipIf(!url)('audit_logs', () => {
 
   it('enregistre une entrée par opération finale, avec le journal', async () => {
     const boardId = `audit-${createId()}`;
+    await createTestBoard(database.db, boardId);
     await store.commit(boardId, {
       seq: 1,
       upserts: [{ object: rectangle('a'), version: 1 }],
@@ -110,6 +113,7 @@ describe.skipIf(!url)('audit_logs', () => {
 
   it('expose l’audit d’un board en HTTP', async () => {
     const boardId = `audit-${createId()}`;
+    await createTestBoard(database.db, boardId);
     await store.commit(boardId, {
       seq: 1,
       upserts: [{ object: rectangle('a'), version: 1 }],
@@ -119,7 +123,12 @@ describe.skipIf(!url)('audit_logs', () => {
       ],
     });
     const auth = new AuthService(database.db);
-    const app = await buildApp({ database: { ping: async () => true }, auth, audit });
+    const app = await buildApp({
+      database: { ping: async () => true },
+      auth,
+      audit,
+      boards: new BoardService(database.db),
+    });
     const username = `admin-${createId().slice(-10).toLowerCase()}`;
     await database.db.insert(users).values({
       id: createId(),

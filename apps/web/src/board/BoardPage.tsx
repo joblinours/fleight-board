@@ -1,11 +1,11 @@
 import { BoardEditor, type InputMode, type ToolName } from '@fleight/canvas';
 import { CollaborationClient, type ConnectionStatus } from '@fleight/collaboration';
-import type { Participant } from '@fleight/protocol';
+import type { BoardSummary, Participant } from '@fleight/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { refreshSession, useSession } from '../auth/session';
 import { createLockService } from './lock-service';
 import { sampleDiagram } from './sample-diagram';
-import { connectWebSocket } from './websocket-transport';
+import { CloseCodes, connectWebSocket } from './websocket-transport';
 
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
   connecting: 'Connexion…',
@@ -30,8 +30,15 @@ const TOOLS: Array<{ name: ToolName; label: string; key: string }> = [
 ];
 const COLORS = ['#1f2937', '#2563eb', '#dc2626', '#16a34a', '#f59e0b'];
 
-/** Whiteboard local (`boardId` absent) ou collaboratif. */
-export function BoardPage({ boardId }: { boardId?: string }) {
+/** Whiteboard local (`board` absent) ou collaboratif. */
+export function BoardPage({ board }: { board?: BoardSummary }) {
+  const boardId = board?.id;
+  // Page d'un canvas standard, lue une fois à l'ouverture (le format ne change pas).
+  const pageRef = useRef(
+    board?.canvas.kind === 'standard'
+      ? { width: board.canvas.width, height: board.canvas.height }
+      : undefined,
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneCanvasRef = useRef<HTMLCanvasElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -50,6 +57,8 @@ export function BoardPage({ boardId }: { boardId?: string }) {
   const [rejection, setRejection] = useState<string | null>(null);
   const [history, setHistory] = useState({ canUndo: false, canRedo: false });
   const [pending, setPending] = useState(0);
+  /** Session terminée côté serveur : board supprimé (ou disparu). */
+  const [ended, setEnded] = useState<string | null>(null);
   const session = useSession();
   // Nom indicatif : le serveur affiche celui du compte connecté.
   const userName = useRef('Invité');
@@ -84,12 +93,17 @@ export function BoardPage({ boardId }: { boardId?: string }) {
       : undefined;
     // Connexion perdue : la session a peut-être expiré ou été révoquée (retour à la connexion).
     const disconnect = client
-      ? connectWebSocket(client, undefined, () => void refreshSession())
+      ? connectWebSocket(client, undefined, (code) => {
+          if (code === CloseCodes.BoardDeleted) setEnded('Ce board vient d’être supprimé.');
+          else if (code === CloseCodes.BoardNotFound) setEnded('Ce board n’existe plus.');
+          else void refreshSession();
+        })
       : undefined;
 
     const editor = new BoardEditor({
       sceneCanvas,
       overlayCanvas,
+      ...(pageRef.current ? { page: pageRef.current } : {}),
       ...(client
         ? {
             document: client.document,
@@ -118,10 +132,14 @@ export function BoardPage({ boardId }: { boardId?: string }) {
     });
     editorRef.current = editor;
 
+    let sized = false;
     const resizeObserver = new ResizeObserver(([entry]) => {
       if (!entry) return;
       const { width, height } = entry.contentRect;
       editor.resize(width, height, window.devicePixelRatio || 1);
+      // Canvas standard : la page entière est visible à l'ouverture.
+      if (!sized && pageRef.current) editor.fitContent();
+      sized = true;
     });
     resizeObserver.observe(container);
 
@@ -280,12 +298,21 @@ export function BoardPage({ boardId }: { boardId?: string }) {
               {pending} modification{pending > 1 ? 's' : ''} en attente
             </span>
           )}
-          <span className="board-room">Board « {boardId} »</span>
+          <span className="board-room">
+            {board?.name} · code <strong>{board?.code}</strong>
+          </span>
           <ul>
             {participants.map(({ connectionId, name }) => (
               <li key={connectionId}>{name}</li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {ended && (
+        <div className="board-ended" role="alert">
+          <p>{ended}</p>
+          <a href="#/">Retour à l’accueil</a>
         </div>
       )}
 

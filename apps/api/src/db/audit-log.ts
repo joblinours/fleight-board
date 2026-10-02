@@ -42,3 +42,26 @@ export class PostgresAuditLog implements AuditLogReader {
 function toRecord({ createdAt, ...row }: typeof auditLogs.$inferSelect): AuditRecord {
   return { ...row, createdAt: createdAt.toISOString() };
 }
+
+/** Événement hors opérations de board (compte, administration, gestion des boards). */
+export type AuditEvent = {
+  actor: string;
+  actorType: 'user' | 'client' | 'system';
+  action: typeof auditLogs.$inferInsert.action;
+  boardId?: string | null;
+  objectId?: string | null;
+  sessionId?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export async function writeAuditEvent(db: Db, event: AuditEvent): Promise<void> {
+  await db.insert(auditLogs).values({
+    actor: event.actor,
+    actorType: event.actorType,
+    action: event.action,
+    boardId: event.boardId ?? null,
+    objectId: event.objectId ?? null,
+    sessionId: event.sessionId ?? null,
+    metadata: event.metadata ?? {},
+  });
+}

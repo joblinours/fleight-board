@@ -5,6 +5,7 @@ import { AccountPage, LoginPage, nextRoute, RegisterPage } from './auth/AuthPage
 import { refreshSession, useSession } from './auth/session';
 import { BenchPage } from './bench/BenchPage';
 import { BoardPage } from './board/BoardPage';
+import { BoardRoute, JoinRoute } from './board/BoardRoute';
 import { HomePage } from './HomePage';
 import { InkPage } from './ink/InkPage';
 
@@ -65,7 +66,9 @@ export function App() {
   if (session.status !== 'authenticated' || mustChangePassword) return null;
 
   const board = route.match(/^\/board\/([A-Za-z0-9_-]{1,64})$/);
-  if (board?.[1]) return <BoardPage key={board[1]} boardId={board[1]} />;
+  if (board?.[1]) return <BoardRoute key={board[1]} boardId={board[1]} />;
+  const join = route.match(/^\/join\/([A-Za-z0-9]{6})$/);
+  if (join?.[1]) return <JoinRoute key={join[1]} code={join[1]} />;
   const audit = route.match(/^\/audit\/([A-Za-z0-9_-]{1,64})$/);
   if (audit?.[1]) return <AuditPage key={audit[1]} boardId={audit[1]} />;
 

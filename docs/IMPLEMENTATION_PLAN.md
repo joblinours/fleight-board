@@ -275,9 +275,11 @@ Au-delà de l'objectif, sur un seul board : 100 utilisateurs → ACK p50 115 ms,
 
 ### M1.2 — Whiteboards
 
-- [ ] Création : nom, description, canvas Standard (A4, A3, A2, 16:9, 4:3, Custom) ou Infinite
-- [ ] Liste, renommage, suppression (immédiate en v1), masquage
-- [ ] Code court à 6 caractères (alphabet sans `O 0 I 1 S 5`)
+- [x] Création : nom, description, canvas Standard (A4, A3, A2, 16:9, 4:3, Custom) ou Infinite
+- [x] Liste, renommage, suppression (immédiate en v1), masquage
+- [x] Code court à 6 caractères (alphabet sans `O 0 I 1 S 5`)
+
+→ **Validé** : tests PostgreSQL (création infinie ou standard, liste et masquage, code insensible à la casse, droits du propriétaire, suppression immédiate, identifiant choisi, audit, WebSocket refusé sur un board inexistant et fermé à la suppression) et parcours dans deux navigateurs (création A4 paysage, rejoindre par code, renommer, masquer, suppression pendant la session).
 
 ### M1.3 — Objets complets
 
@@ -373,6 +375,7 @@ Au-delà de l'objectif, sur un seul board : 100 utilisateurs → ACK p50 115 ms,
 | Date | Décision |
 |---|---|
 | 2026-10-01 | Plan validé ; décisions D1 à D22 actées |
+| 2026-10-02 | M1.2 : les boards sont créés par l'API (plus de création implicite au premier JOIN) ; un board existant reste ouvrable par tout utilisateur connecté qui a son lien ou son code jusqu'aux permissions (M1.7) et aux sessions publiques/privées (M1.8). Supprimer le compte du propriétaire conserve ses boards (propriétaire vide, à réattribuer en M1.7). Formats en unités monde à 96 par pouce (A4 = 794 × 1123) ; les objets peuvent déborder de la page |
 | 2026-10-02 | M1.1 : l'auteur journalisé devient l'**utilisateur** (nom du compte affiché aux autres participants) ; la détection de conflits reste par **client** (deux appareils d'un même compte sont traités comme deux participants). Le WebSocket exige une session ; l'audit d'un board est réservé aux Admins en attendant les propriétaires (M1.2). Cookie `Secure` seulement en HTTPS, pour que l'iPad fonctionne en HTTP sur le réseau local de développement |
 | 2026-10-02 | **Fin de Phase 0 : GO** pour la Phase 1 (rapport `docs/poc-report.md` validé) |
 | 2026-10-02 | M0.11 : **enregistrement groupé** (group commit) — les lots arrivés pendant l'enregistrement d'un board partent ensemble dans la transaction suivante, l'`ACK` restant postérieur à l'enregistrement. À 50 utilisateurs actifs, l'ACK passe de 340 ms (p50) à 8 ms : une transaction par lot plafonnait un board à ~190 lots/s |

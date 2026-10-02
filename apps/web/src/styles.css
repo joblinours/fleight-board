@@ -784,6 +784,184 @@ button.link {
   user-select: all;
 }
 
+.board-ended {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 0.5rem;
+  background: color-mix(in srgb, Canvas 85%, transparent);
+  text-align: center;
+  font-size: 1.1em;
+}
+
+.home-login {
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, #2563eb 10%, transparent);
+}
+
+.boards {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.boards button,
+.boards select,
+.boards input,
+.boards textarea {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+  border-radius: 6px;
+  background: Canvas;
+  color: CanvasText;
+  font: inherit;
+  font-size: max(16px, 0.95em);
+}
+
+.boards button.danger {
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
+.boards button.boards-new {
+  border: none;
+  background: #2563eb;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.boards-join label {
+  font-weight: 600;
+}
+
+.boards-join div {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.boards-join input {
+  width: 8rem;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.boards-create {
+  display: grid;
+  gap: 0.6rem;
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+  border-radius: 10px;
+}
+
+.boards-create h2 {
+  margin: 0;
+}
+
+.boards-create label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.boards-create fieldset {
+  display: grid;
+  gap: 0.35rem;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.boards-create fieldset label {
+  display: block;
+}
+
+.boards-format {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.boards-format input {
+  width: 6rem;
+}
+
+.boards-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.boards-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.boards-list > li {
+  padding: 0.75rem 1rem;
+  border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+  border-radius: 10px;
+}
+
+.boards-list > li.hidden-board {
+  opacity: 0.6;
+}
+
+.boards-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.boards-card-head form {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.boards-name {
+  font-weight: 700;
+  font-size: 1.05em;
+}
+
+.boards-code {
+  padding: 0.1rem 0.45rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, CanvasText 8%, transparent);
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.1em;
+}
+
+.boards-description,
+.boards-meta {
+  margin: 0.3rem 0;
+}
+
+.boards-meta,
+.boards-empty {
+  color: GrayText;
+  font-size: 0.9em;
+}
+
+.boards-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.boards-error {
+  margin: 0.35rem 0;
+  color: #dc2626;
+}
+
 .auth-field.invalid input {
   border-color: #dc2626;
 }

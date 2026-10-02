@@ -1,5 +1,8 @@
 import type { FastifyRequest } from 'fastify';
 import type { Identity } from './auth/auth-service';
+import { generateBoardCode } from './boards/board-service';
+import type { Db } from './database';
+import { boards } from './db/schema';
 
 /** Identité de test pour les connexions WebSocket (sans base de comptes). */
 export function testIdentity(name = 'Testeur'): Identity {
@@ -19,3 +22,8 @@ export const identifyAnyone = async () => testIdentity();
 /** `identify` qui prend le nom dans l'en-tête `x-test-user` (plusieurs participants). */
 export const identifyByHeader = async (request: FastifyRequest) =>
   testIdentity(String(request.headers['x-test-user'] ?? 'Testeur'));
+
+/** Board créé directement en base (les commits exigent qu'il existe). */
+export async function createTestBoard(db: Db, id: string): Promise<void> {
+  await db.insert(boards).values({ id, code: generateBoardCode(), name: id }).onConflictDoNothing();
+}

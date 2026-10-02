@@ -1,11 +1,12 @@
 import websocket from '@fastify/websocket';
 import { CollaborationHub, type HubLogger } from '@fleight/collaboration';
-import type { AuditLogResponse, HealthResponse } from '@fleight/protocol';
-import { BoardIdSchema, PROTOCOL_VERSION } from '@fleight/protocol';
+import type { HealthResponse } from '@fleight/protocol';
+import { PROTOCOL_VERSION } from '@fleight/protocol';
 import Fastify, { type FastifyRequest, type FastifyServerOptions } from 'fastify';
-import { z } from 'zod';
 import type { AuthService, Identity } from './auth/auth-service';
 import { registerAuth, SESSION_COOKIE } from './auth/routes';
+import type { BoardService } from './boards/board-service';
+import { registerBoards } from './boards/routes';
 import type { Database } from './database';
 import type { AuditLogReader } from './db/audit-log';
 import { registerWebSocket } from './websocket';
@@ -19,8 +20,10 @@ export type AppOptions = {
   auth?: AuthService;
   /** Demandes de création de compte depuis l'interface. */
   allowRegistration?: boolean;
-  /** Lecture de l'audit (réservée aux Admins). */
+  /** Lecture de l'audit (propriétaire du board, Admins). */
   audit?: AuditLogReader;
+  /** Whiteboards (routes `/boards`) ; requiert `auth`. */
+  boards?: BoardService;
   /**
    * Identifie une connexion WebSocket. Par défaut : session (cookie) via `auth` ;
    * sans `auth` ni `identify`, toute connexion est refusée.
@@ -33,10 +36,6 @@ export type AppOptions = {
 /** Taille maximale d'un message WebSocket (1 Mio). */
 const MAX_MESSAGE_BYTES = 1024 * 1024;
 
-const AuditQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(1000).default(200),
-});
-
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 export async function buildApp({
@@ -46,6 +45,7 @@ export async function buildApp({
   auth,
   allowRegistration,
   audit,
+  boards,
   identify,
   trustProxy = false,
 }: AppOptions) {
@@ -83,21 +83,10 @@ export async function buildApp({
       ...(allowRegistration !== undefined ? { allowRegistration } : {}),
     });
 
-    // Audit d'un board, du plus récent au plus ancien (Admins ; propriétaires à partir de M1.2).
-    if (audit) {
-      app.get<{ Params: { boardId: string } }>(
-        '/boards/:boardId/audit',
-        { preHandler: requireUser({ admin: true }) },
-        async (request, reply): Promise<AuditLogResponse | { error: string; message: string }> => {
-          const boardId = BoardIdSchema.safeParse(request.params.boardId);
-          const query = AuditQuerySchema.safeParse(request.query);
-          if (!boardId.success || !query.success) {
-            reply.code(400);
-            return { error: 'INVALID_REQUEST', message: 'Requête invalide' };
-          }
-          return { entries: await audit.list(boardId.data, query.data.limit) };
-        },
-      );
+    if (boards) {
+      await registerBoards(app, { boards, audit, requireUser: requireUser() });
+      // Board supprimé : ses participants sont déconnectés.
+      boards.onDeleted = (boardId) => collaboration.evict(boardId);
     }
   }
 

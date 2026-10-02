@@ -1,6 +1,7 @@
 import { CollaborationHub } from '@fleight/collaboration';
 import { buildApp } from './app';
 import { AuthService } from './auth/auth-service';
+import { BoardService } from './boards/board-service';
 import { loadConfig } from './config';
 import { connectDatabase } from './database';
 import { PostgresAuditLog } from './db/audit-log';
@@ -44,11 +45,17 @@ const app = await buildApp({
   database,
   logger: { level: config.LOG_LEVEL },
   auth,
+  boards: new BoardService(database.db),
   allowRegistration: config.ALLOW_REGISTRATION,
   trustProxy: config.TRUST_PROXY,
   audit: new PostgresAuditLog(database.db),
   createHub: (log) => {
-    hub = new CollaborationHub({ store: new PostgresBoardStore(database.db), log });
+    hub = new CollaborationHub({
+      store: new PostgresBoardStore(database.db),
+      log,
+      // Les boards sont créés par l'API (POST /boards).
+      requireExistingBoards: true,
+    });
     return hub;
   },
 });

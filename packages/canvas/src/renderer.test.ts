@@ -21,6 +21,10 @@ function createContext() {
     lineTo: vi.fn(),
     stroke: vi.fn(),
     setLineDash: vi.fn(),
+    save: vi.fn(),
+    restore: vi.fn(),
+    rect: vi.fn(),
+    clip: vi.fn(),
     fillStyle: '',
     strokeStyle: '',
     lineWidth: 1,
@@ -118,6 +122,25 @@ describe('CanvasRenderer', () => {
     scene.upsert(item('a', 0, 0));
 
     expect(frames).toHaveLength(0);
+  });
+});
+
+describe('page d’un canvas standard', () => {
+  it('grise le hors-page, peint la page et la borde ; rien sans page', () => {
+    const { ctx, renderer, flush } = setup();
+    renderer.resize(200, 100);
+    flush();
+    expect(ctx.strokeRect).not.toHaveBeenCalled();
+
+    renderer.page = { width: 794, height: 1123 };
+    flush();
+    expect(ctx.fillRect).toHaveBeenCalledWith(0, 0, 794, 1123);
+    expect(ctx.strokeRect).toHaveBeenCalledWith(0, 0, 794, 1123);
+
+    renderer.page = undefined;
+    ctx.strokeRect.mockClear();
+    flush();
+    expect(ctx.strokeRect).not.toHaveBeenCalled();
   });
 });
 

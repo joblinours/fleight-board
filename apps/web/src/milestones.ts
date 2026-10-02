@@ -184,4 +184,20 @@ export const MILESTONES: Milestone[] = [
       '5 mauvais mots de passe d’affilée bloquent le compte 15 minutes.',
     ],
   },
+  {
+    id: 'M1.2',
+    title: 'Whiteboards',
+    summary: 'Créer, lister, renommer, masquer, supprimer ses boards ; rejoindre par code.',
+    href: '#/',
+    linkLabel: 'Mes whiteboards (ci-dessus)',
+    needsApi: true,
+    multiDevice: true,
+    steps: [
+      'Sur le PC : « + Nouveau whiteboard », page de taille fixe A4 paysage → la page blanche s’affiche, le reste est grisé.',
+      'Sur l’iPad (autre compte) : « Rejoindre un board » avec le code à 6 caractères affiché sur le PC.',
+      'Créer aussi un board infini ; « Renommer », « Masquer » puis « Afficher les boards masqués ».',
+      'Supprimer le board A4 pendant que l’iPad y est : l’iPad affiche « Ce board vient d’être supprimé ».',
+      'Un ancien lien de test (ex. board « test-m05 ») propose « Créer ce board ».',
+    ],
+  },
 ];

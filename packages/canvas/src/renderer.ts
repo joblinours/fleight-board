@@ -48,7 +48,16 @@ export type RendererOptions<T extends SceneItem> = {
   onRender?: (stats: RenderStats) => void;
   /** Dessin supplémentaire en coordonnées monde, après les éléments (sélection, aperçus). */
   overlay?: (ctx: CanvasRenderingContext2D, view: ViewState) => void;
+  /** Page de taille fixe (canvas standard) ; absente : canvas infini. */
+  page?: Page;
 };
+
+/** Page d'un canvas standard, de (0, 0) à (width, height) en unités monde. */
+export type Page = { width: number; height: number };
+
+/** Zone hors page d'un canvas standard, et bordure de la page. */
+const PAGE_SURROUND = '#e5e7eb';
+const PAGE_BORDER = 'rgba(0, 0, 0, 0.25)';
 
 const DEFAULT_GRID: GridOptions = { color: 'rgba(128, 128, 128, 0.15)', minSpacing: 16 };
 const GRID_BASE = 10;
@@ -71,6 +80,7 @@ export class CanvasRenderer<T extends SceneItem = SceneItem> {
   readonly #onRender: ((stats: RenderStats) => void) | undefined;
   readonly #overlay: ((ctx: CanvasRenderingContext2D, view: ViewState) => void) | undefined;
   readonly #unsubscribe: () => void;
+  #page: Page | undefined;
 
   #width = 0;
   #height = 0;
@@ -95,11 +105,21 @@ export class CanvasRenderer<T extends SceneItem = SceneItem> {
     this.#now = options.now ?? (() => performance.now());
     this.#onRender = options.onRender;
     this.#overlay = options.overlay;
+    this.#page = options.page;
     this.#unsubscribe = this.#scene.subscribe(() => this.requestRender());
   }
 
   get stats(): RenderStats {
     return this.#stats;
+  }
+
+  get page(): Page | undefined {
+    return this.#page;
+  }
+
+  set page(page: Page | undefined) {
+    this.#page = page;
+    this.requestRender();
   }
 
   /** Taille du viewport en pixels CSS. */
@@ -151,13 +171,34 @@ export class CanvasRenderer<T extends SceneItem = SceneItem> {
     const scale = ratio * camera.zoom;
     ctx.setTransform(scale, 0, 0, scale, -camera.offset.x * scale, -camera.offset.y * scale);
 
-    if (this.#grid) this.#drawGrid(this.#grid, view);
+    const page = this.#background === null ? undefined : this.#page;
+    if (page) {
+      // Hors de la page : fond grisé ; la grille n'est tracée que sur la page.
+      const { minX, minY, maxX, maxY } = view.visible;
+      ctx.fillStyle = PAGE_SURROUND;
+      ctx.fillRect(minX, minY, maxX - minX, maxY - minY);
+      ctx.fillStyle = this.#background ?? '#ffffff';
+      ctx.fillRect(0, 0, page.width, page.height);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, page.width, page.height);
+      ctx.clip();
+      if (this.#grid) this.#drawGrid(this.#grid, view);
+      ctx.restore();
+    } else if (this.#grid) {
+      this.#drawGrid(this.#grid, view);
+    }
 
     const items = this.#scene.query(view.visible);
     for (const item of items) {
       const painter = this.#painters[item.kind];
       if (painter) painter(ctx, item, view);
       else drawMissingPainter(ctx, item, view);
+    }
+    if (page) {
+      ctx.strokeStyle = PAGE_BORDER;
+      ctx.lineWidth = 1 / view.zoom;
+      ctx.strokeRect(0, 0, page.width, page.height);
     }
     this.#overlay?.(ctx, view);
 

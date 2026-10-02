@@ -2,6 +2,7 @@ import { createId } from '@fleight/shared';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app';
+import { BoardService } from '../boards/board-service';
 import { connectDatabase, type Database } from '../database';
 import { PostgresAuditLog } from '../db/audit-log';
 import { users } from '../db/schema';
@@ -37,6 +38,7 @@ describe.skipIf(!url)('authentification', () => {
       database: { ping: async () => true },
       auth,
       audit: new PostgresAuditLog(database.db),
+      boards: new BoardService(database.db),
       ...options,
     });
     await app.ready();

@@ -11,6 +11,7 @@ import {
 } from '@fleight/protocol';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { type ZodType, z } from 'zod';
+import { BoardError } from '../boards/board-service';
 import type { AuditLogReader } from '../db/audit-log';
 import { AuthError, type AuthService, type Identity, type RequestMeta } from './auth-service';
 
@@ -97,7 +98,7 @@ export async function registerAuth(app: FastifyInstance, options: AuthRoutesOpti
     '/auth/login',
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      const body = parse(LoginRequestSchema, request.body, reply);
+      const body = parseBody(LoginRequestSchema, request.body, reply);
       if (!body) return;
       const result = await auth.login(body.identifier, body.password, meta(request));
       if (!result.ok) {
@@ -134,7 +135,7 @@ export async function registerAuth(app: FastifyInstance, options: AuthRoutesOpti
     '/auth/password',
     { preHandler: requireUser({ allowPasswordChange: true }) },
     async (request, reply) => {
-      const body = parse(ChangePasswordRequestSchema, request.body, reply);
+      const body = parseBody(ChangePasswordRequestSchema, request.body, reply);
       if (!body) return;
       await auth.changePassword(
         request.identity as Identity,
@@ -154,7 +155,7 @@ export async function registerAuth(app: FastifyInstance, options: AuthRoutesOpti
           .code(403)
           .send(error('REGISTRATION_CLOSED', 'Les demandes de compte sont fermées'));
       }
-      const body = parse(RegisterRequestSchema, request.body, reply);
+      const body = parseBody(RegisterRequestSchema, request.body, reply);
       if (!body) return;
       const user = await auth.register(body, meta(request));
       return reply.code(201).send({ user });
@@ -169,13 +170,13 @@ export async function registerAuth(app: FastifyInstance, options: AuthRoutesOpti
   app.get('/admin/users', admin, async () => ({ users: await auth.listUsers() }));
 
   app.post('/admin/users', admin, async (request, reply) => {
-    const body = parse(CreateUserRequestSchema, request.body, reply);
+    const body = parseBody(CreateUserRequestSchema, request.body, reply);
     if (!body) return;
     return reply.code(201).send(await auth.createUser(adminIdentity(request), body));
   });
 
   app.patch('/admin/users/:id', admin, async (request, reply) => {
-    const body = parse(UpdateUserRequestSchema, request.body, reply);
+    const body = parseBody(UpdateUserRequestSchema, request.body, reply);
     if (!body) return;
     return { user: await auth.updateUser(adminIdentity(request), idParam(request), body) };
   });
@@ -191,7 +192,7 @@ export async function registerAuth(app: FastifyInstance, options: AuthRoutesOpti
 
   if (audit) {
     app.get('/admin/audit', admin, async (request, reply) => {
-      const query = parse(LimitSchema, request.query, reply);
+      const query = parseBody(LimitSchema, request.query, reply);
       if (!query) return;
       return { entries: await audit.listAccounts(query.limit) };
     });
@@ -199,6 +200,10 @@ export async function registerAuth(app: FastifyInstance, options: AuthRoutesOpti
 
   // Erreurs métier → réponses HTTP.
   app.setErrorHandler((err, request, reply) => {
+    if (err instanceof BoardError) {
+      const status = { BOARD_NOT_FOUND: 404, ID_TAKEN: 409, FORBIDDEN: 403 }[err.code];
+      return reply.code(status).send(error(err.code, err.message));
+    }
     if (err instanceof AuthError) {
       const status = { NOT_FOUND: 404, INVALID_PASSWORD: 400 }[err.code as string] ?? 409;
       return reply.code(status).send(error(err.code, err.message, err.field));
@@ -223,7 +228,11 @@ function error(code: string, message: string, field?: string): ApiError {
 }
 
 /** Valide un corps de requête ; répond 400 (avec le champ en cause) s'il est invalide. */
-function parse<T>(schema: ZodType<T>, data: unknown, reply: FastifyReply): T | undefined {
+export function parseBody<T>(
+  schema: ZodType<T>,
+  data: unknown,
+  reply: FastifyReply,
+): T | undefined {
   const result = schema.safeParse(data ?? {});
   if (result.success) return result.data;
   const issue = result.error.issues[0];
