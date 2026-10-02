@@ -94,7 +94,7 @@ describe('session collaborative', () => {
     const client = collector(socket);
     client.send({ type: 'HELLO', protocolVersion: PROTOCOL_VERSION });
     await client.next('HELLO');
-    client.send({ type: 'JOIN', boardId: 'demo', name });
+    client.send({ type: 'JOIN', boardId: 'demo', name, clientId: name });
     const joined = await client.next('JOINED');
     return { socket, client, joined };
   }
@@ -126,6 +126,7 @@ describe('session collaborative', () => {
     alice.client.send({
       type: 'OPS',
       batchId: 'b1',
+      baseSeq: 0,
       operations: [{ kind: 'create', object: rectangle }],
     });
 
@@ -155,6 +156,7 @@ describe('session collaborative', () => {
     alice.client.send({
       type: 'OPS',
       batchId: 'b2',
+      baseSeq: 0,
       operations: [{ kind: 'update', id: 'absent', patch: { x: 1 } }],
     });
 

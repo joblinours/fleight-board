@@ -100,10 +100,11 @@ describe('échec de l’enregistrement', () => {
         disconnected = true;
       },
     );
-    connection.receive({ type: 'JOIN', boardId: 'b', name: 'Alice' });
+    connection.receive({ type: 'JOIN', boardId: 'b', name: 'Alice', clientId: 'alice' });
     connection.receive({
       type: 'OPS',
       batchId: '1',
+      baseSeq: 0,
       operations: [{ kind: 'create', object: rect('a') }],
     });
     await drain(hub);
@@ -112,6 +113,7 @@ describe('échec de l’enregistrement', () => {
     connection.receive({
       type: 'OPS',
       batchId: '2',
+      baseSeq: 1,
       operations: [{ kind: 'create', object: rect('z') }],
     });
     await drain(hub);
@@ -127,7 +129,7 @@ describe('échec de l’enregistrement', () => {
     const again: ServerSessionMessage[] = [];
     hub
       .open('alice-2', (message) => again.push(message))
-      .receive({ type: 'JOIN', boardId: 'b', name: 'Alice' });
+      .receive({ type: 'JOIN', boardId: 'b', name: 'Alice', clientId: 'alice' });
     await drain(hub);
     expect(again[0]).toMatchObject({ type: 'JOINED', snapshot: { seq: 1, objects: [rect('a')] } });
   });

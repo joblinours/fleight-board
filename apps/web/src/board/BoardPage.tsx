@@ -9,7 +9,14 @@ import { connectWebSocket, displayName } from './websocket-transport';
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
   connecting: 'Connexion…',
   joined: 'Connecté',
-  closed: 'Déconnecté',
+  closed: 'Hors ligne — reconnexion…',
+};
+
+const REJECTION_MESSAGES: Record<string, string> = {
+  CONFLICT: 'modifiée(s) entre-temps par un autre participant',
+  LOCKED: 'en cours de modification par un autre participant',
+  INVALID_OPERATION: 'devenue(s) impossible(s)',
+  NOT_JOINED: 'envoyée(s) hors session',
 };
 
 const TOOLS: Array<{ name: ToolName; label: string; key: string }> = [
@@ -41,6 +48,7 @@ export function BoardPage({ boardId }: { boardId?: string }) {
   const [participants, setParticipants] = useState<readonly Participant[]>([]);
   const [rejection, setRejection] = useState<string | null>(null);
   const [history, setHistory] = useState({ canUndo: false, canRedo: false });
+  const [pending, setPending] = useState(0);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -57,12 +65,13 @@ export function BoardPage({ boardId }: { boardId?: string }) {
             setParticipants(list);
             editorRef.current?.refresh();
           },
-          onRejected: (code) =>
+          onRejected: (code, count) =>
             setRejection(
-              code === 'LOCKED'
-                ? 'Cet objet est en cours de modification par un autre participant.'
-                : 'Une modification a été refusée par le serveur ; le board a été resynchronisé.',
+              count > 1
+                ? `${count} modifications n’ont pas pu être appliquées (${REJECTION_MESSAGES[code] ?? 'refusées'}) ; le board a été resynchronisé.`
+                : `Une modification n’a pas pu être appliquée (${REJECTION_MESSAGES[code] ?? 'refusée'}) ; le board a été resynchronisé.`,
             ),
+          onPending: setPending,
           onLocks: () => editorRef.current?.refresh(),
           onLockDenied: () =>
             setRejection('Cet objet est en cours de modification par un autre participant.'),
@@ -258,6 +267,11 @@ export function BoardPage({ boardId }: { boardId?: string }) {
           <span className={`board-status ${status ?? 'connecting'}`}>
             {STATUS_LABELS[status ?? 'connecting']}
           </span>
+          {pending > 0 && status !== 'joined' && (
+            <span className="board-pending">
+              {pending} modification{pending > 1 ? 's' : ''} en attente
+            </span>
+          )}
           <span className="board-room">Board « {boardId} »</span>
           <ul>
             {participants.map(({ connectionId, name }) => (

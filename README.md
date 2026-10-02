@@ -71,7 +71,7 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 | Curseurs et présence (modes « Drawing only » / « Cursor visible ») | _(prévu)_ |
 | Undo/redo individuel (chacun n'annule que ses propres actions) | 🧪 Prototypé (M0.8) |
 | Audit log complet et non annulable | _(prévu)_ |
-| Travail local temporaire pendant une coupure réseau, puis resynchronisation | _(prévu)_ |
+| Travail local temporaire pendant une coupure réseau, puis resynchronisation | 🧪 Prototypé (M0.9) |
 | Mode présentation (navigation, zoom et focus synchronisés) | _(prévu)_ |
 
 ### Administration
@@ -170,6 +170,7 @@ Fleight Board utilise une approche **hybride à serveur autoritaire** :
 | Alice déplace X, Bob change ensuite sa couleur, Alice fait Ctrl+Z | Seule la position est restaurée ; la couleur de Bob est conservée |
 | Undo sur un objet supprimé entre-temps par un autre utilisateur | Undo ignoré, avec notification |
 | Opérations faites pendant une coupure réseau en conflit avec des modifications distantes | Rejetées, avec notification (« N modifications n'ont pas pu être appliquées ») |
+| Même propriété modifiée en même temps par deux participants | La première modification arrivée au serveur l'emporte, l'autre est refusée et signalée |
 | Undo | Enregistré dans l'audit log ; l'audit log n'est jamais annulé |
 
 ## Utilisateurs, rôles et permissions

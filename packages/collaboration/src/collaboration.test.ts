@@ -53,27 +53,42 @@ describe('modifications concurrentes', () => {
   }
 
   for (const first of ['alice', 'bob'] as const) {
-    it(`converge sur un même champ quand ${first} arrive en premier au serveur`, async () => {
+    it(`même propriété modifiée en même temps : ${first}, arrivé le premier, l’emporte`, async () => {
       const { network, alice, bob } = await twoClientsWithRect();
       alice.client.applyLocal([{ kind: 'update', id: 'a', patch: { x: 10 } }]);
       bob.client.applyLocal([{ kind: 'update', id: 'a', patch: { x: 20 } }]);
 
       // Le serveur reçoit les deux lots avant que quiconque ne reçoive quoi que ce soit.
-      const [winnerLast, loserFirst] = first === 'alice' ? [bob, alice] : [alice, bob];
-      loserFirst.upload();
+      const [winner, loser] = first === 'alice' ? [alice, bob] : [bob, alice];
+      winner.upload();
       await network.drain();
-      winnerLast.upload();
+      loser.upload();
       await network.drain();
       alice.download();
       bob.download();
       await network.settle();
 
-      const expected = first === 'alice' ? 20 : 10;
+      // Le second lot a été fait sans connaître le premier : il est refusé (conflit).
+      const expected = first === 'alice' ? 10 : 20;
       expect((await network.serverObjects())[0]).toMatchObject({ x: expected });
+      expect(loser.events).toContainEqual({ type: 'rejected', detail: 'CONFLICT' });
       expect(objects(alice)).toEqual(await network.serverObjects());
       expect(objects(bob)).toEqual(await network.serverObjects());
     });
   }
+
+  it('des propriétés différentes modifiées en même temps sont toutes conservées', async () => {
+    const { network, alice, bob } = await twoClientsWithRect();
+    alice.client.applyLocal([{ kind: 'update', id: 'a', patch: { x: 10 } }]);
+    bob.client.applyLocal([{ kind: 'update', id: 'a', patch: { label: 'Router' } }]);
+    alice.upload();
+    bob.upload();
+    await network.settle();
+
+    expect((await network.serverObjects())[0]).toMatchObject({ x: 10, label: 'Router' });
+    expect(objects(alice)).toEqual(await network.serverObjects());
+    expect(objects(bob)).toEqual(await network.serverObjects());
+  });
 
   it('un lot local en attente reste visible malgré une modification distante antérieure', async () => {
     const { network, alice, bob } = await twoClientsWithRect();

@@ -21,6 +21,10 @@ export type TestClient = {
   /** Événements remontés par le client (rejets, verrous refusés). */
   events: Array<{ type: string; detail: unknown }>;
   close(): void;
+  /** Coupure réseau : la connexion tombe, les messages en transit sont perdus. */
+  goOffline(): void;
+  /** Rétablissement : nouvelle connexion WebSocket, même client. */
+  goOnline(): void;
 };
 
 /** Laisse le serveur traiter les messages reçus (traitement asynchrone). */
@@ -44,16 +48,26 @@ export function createNetwork(
     const toServer: string[] = [];
     const toClient: ServerSessionMessage[] = [];
     const scheduled: Array<() => void> = [];
-    const connection = hub.open(name, (message) => toClient.push(message));
+    let connections = 1;
+    let online = true;
+    let connection = hub.open(name, (message) => {
+      if (online) toClient.push(message);
+    });
     const events: Array<{ type: string; detail: unknown }> = [];
     const client = new CollaborationClient({
       boardId,
       name,
+      clientId: name,
       schedule: (callback) => scheduled.push(callback),
       onRejected: (code) => events.push({ type: 'rejected', detail: code }),
       onLockDenied: (ids, holder) => events.push({ type: 'lockDenied', detail: { ids, holder } }),
     });
-    client.connect({ send: (message) => toServer.push(message), close: () => {} });
+    client.connect({
+      send: (message) => {
+        if (online) toServer.push(message);
+      },
+      close: () => {},
+    });
 
     const testClient: TestClient = {
       name,
@@ -83,6 +97,27 @@ export function createNetwork(
       },
       close() {
         connection.close();
+      },
+      goOffline() {
+        online = false;
+        toServer.length = 0;
+        toClient.length = 0;
+        connection.close();
+        client.handleClose();
+      },
+      goOnline() {
+        online = true;
+        connections += 1;
+        const current = hub.open(`${name}#${connections}`, (message) => {
+          if (online && connection === current) toClient.push(message);
+        });
+        connection = current;
+        client.connect({
+          send: (message) => {
+            if (online) toServer.push(message);
+          },
+          close: () => {},
+        });
       },
     };
     clients.push(testClient);

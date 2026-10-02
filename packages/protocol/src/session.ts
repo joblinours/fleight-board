@@ -46,6 +46,11 @@ export const JoinMessageSchema = z.object({
   boardId: BoardIdSchema,
   /** Nom affiché (temporaire, avant l'authentification). */
   name: z.string().trim().min(1).max(40),
+  /**
+   * Identifiant stable du client pour la durée de la page : il survit aux
+   * reconnexions (une connexion WebSocket, elle, change à chaque fois).
+   */
+  clientId: z.string().min(1).max(64),
 });
 
 export const LeaveMessageSchema = z.object({ type: z.literal('LEAVE') });
@@ -57,6 +62,12 @@ export const OperationsMessageSchema = z.object({
   operations: z.array(OperationSchema).min(1).max(MAX_OPERATIONS_PER_BATCH),
   gesture: GestureSchema.optional(),
   intent: IntentSchema.optional(),
+  /**
+   * Dernière séquence connue du client quand ces modifications ont été faites.
+   * Une propriété modifiée par un autre client après cette séquence est en conflit :
+   * le lot est refusé (cas typique : modifications faites hors connexion).
+   */
+  baseSeq: z.number().int().nonnegative(),
 });
 
 /** Fin d'un geste dont tous les lots ont déjà été envoyés. */
@@ -115,6 +126,11 @@ export const JoinedMessageSchema = z.object({
   snapshot: SnapshotSchema,
   participants: z.array(ParticipantSchema),
   locks: LockTableSchema,
+  /**
+   * Lots de ce client (même `clientId`) déjà appliqués : après une reconnexion,
+   * leur effet est dans l'état transmis, le client ne doit ni les réappliquer ni les renvoyer.
+   */
+  applied: z.array(z.string()),
 });
 
 /** Changement des verrous, diffusé à tous les participants (demandeur compris). */
@@ -150,6 +166,8 @@ export const RemoteOperationsMessageSchema = z.object({
 export const AckMessageSchema = z.object({
   type: z.literal('ACK'),
   batchId: z.string(),
+  /** Lot déjà appliqué auparavant (renvoyé après une reconnexion). */
+  duplicate: z.boolean().optional(),
   seq: z.number().int().positive(),
   versions: z.record(z.string(), z.number().int().nonnegative()),
 });
@@ -157,7 +175,7 @@ export const AckMessageSchema = z.object({
 export const RejectMessageSchema = z.object({
   type: z.literal('REJECT'),
   batchId: z.string(),
-  code: z.enum(['INVALID_OPERATION', 'NOT_JOINED', 'LOCKED']),
+  code: z.enum(['INVALID_OPERATION', 'NOT_JOINED', 'LOCKED', 'CONFLICT']),
   message: z.string(),
 });
 
