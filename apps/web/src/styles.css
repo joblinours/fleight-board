@@ -458,3 +458,8 @@ body {
   color: #ffffff;
   font-size: 13px;
 }
+
+.board-pending {
+  color: #b45309;
+  font-weight: 600;
+}

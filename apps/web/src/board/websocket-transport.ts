@@ -6,20 +6,68 @@ export function websocketUrl(): string {
   return `${protocol}//${window.location.host}/ws`;
 }
 
-/** Relie le client de collaboration à un WebSocket ; retourne la fonction de fermeture. */
+/** Délais de reconnexion successifs (ms) ; le dernier est répété. */
+const RECONNECT_DELAYS = [500, 1000, 2000, 4000, 8000];
+
+/**
+ * Relie le client de collaboration à un WebSocket et le reconnecte automatiquement
+ * (délai croissant, et immédiatement au retour du réseau).
+ * Retourne la fonction de fermeture définitive.
+ */
 export function connectWebSocket(client: CollaborationClient, url = websocketUrl()): () => void {
-  const socket = new WebSocket(url);
-  socket.addEventListener('open', () => {
-    client.connect({
-      send: (message) => socket.send(message),
-      close: () => socket.close(),
+  let socket: WebSocket | undefined;
+  let attempt = 0;
+  let timer: number | undefined;
+  let stopped = false;
+
+  const open = () => {
+    window.clearTimeout(timer);
+    timer = undefined;
+    if (stopped || socket) return;
+    const current = new WebSocket(url);
+    socket = current;
+    current.addEventListener('open', () => {
+      attempt = 0;
+      client.connect({
+        send: (message) => {
+          if (current.readyState === WebSocket.OPEN) current.send(message);
+        },
+        close: () => current.close(),
+      });
     });
-  });
-  socket.addEventListener('message', (event) => {
-    if (typeof event.data === 'string') client.handleMessage(event.data);
-  });
-  socket.addEventListener('close', () => client.handleClose());
-  return () => socket.close();
+    current.addEventListener('message', (event) => {
+      if (typeof event.data === 'string') client.handleMessage(event.data);
+    });
+    current.addEventListener('close', () => {
+      if (socket !== current) return;
+      socket = undefined;
+      client.handleClose();
+      if (stopped) return;
+      const delay = RECONNECT_DELAYS[Math.min(attempt, RECONNECT_DELAYS.length - 1)] ?? 8000;
+      attempt += 1;
+      timer = window.setTimeout(open, delay);
+    });
+  };
+
+  // Retour du réseau : inutile d'attendre la fin du délai.
+  const onOnline = () => {
+    attempt = 0;
+    open();
+  };
+  // Coupure signalée par le navigateur : on ferme sans attendre le délai TCP.
+  const onOffline = () => socket?.close();
+  window.addEventListener('online', onOnline);
+  window.addEventListener('offline', onOffline);
+
+  open();
+
+  return () => {
+    stopped = true;
+    window.clearTimeout(timer);
+    window.removeEventListener('online', onOnline);
+    window.removeEventListener('offline', onOffline);
+    socket?.close();
+  };
 }
 
 const NAME_KEY = 'fleight.displayName';

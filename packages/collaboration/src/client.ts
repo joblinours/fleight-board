@@ -24,8 +24,13 @@ export type ConnectionStatus = 'connecting' | 'joined' | 'closed';
 export type CollaborationEvents = {
   onStatus?(status: ConnectionStatus): void;
   onParticipants?(participants: readonly Participant[]): void;
-  /** Un lot local a été refusé : l'état a été resynchronisé depuis le serveur. */
-  onRejected?(code: RejectMessage['code'], message: string): void;
+  /**
+   * Des lots locaux ont été refusés (conflit, verrou, objet disparu) : l'état a été
+   * resynchronisé depuis le serveur. `count` regroupe les refus d'une même resynchronisation.
+   */
+  onRejected?(code: RejectMessage['code'], count: number): void;
+  /** Nombre de modifications locales pas encore confirmées par le serveur. */
+  onPending?(count: number): void;
   /** Les verrous ont changé (objet → connexion qui le détient). */
   onLocks?(locks: ReadonlyMap<string, string>): void;
   /** Une demande de verrou a été refusée : l'objet est modifié par `holder`. */
@@ -38,6 +43,8 @@ export const LOCK_RENEW_MS = 4000;
 export type CollaborationClientOptions = CollaborationEvents & {
   boardId: string;
   name: string;
+  /** Identité du client (générée par défaut). */
+  clientId?: string;
   document?: BoardDocument;
   /** Intervalle minimal entre deux envois, en ms (~30 Hz par défaut). */
   flushIntervalMs?: number;
@@ -56,6 +63,8 @@ type PendingEntry = {
   batchId?: string;
   gesture?: Gesture;
   intent?: Intent;
+  /** Séquence connue quand la modification a été faite (détection des conflits). */
+  baseSeq: number;
 };
 
 /**
@@ -68,6 +77,8 @@ type PendingEntry = {
  */
 export class CollaborationClient {
   readonly document: BoardDocument;
+  /** Identité du client pour la durée de la page, conservée à travers les reconnexions. */
+  readonly clientId: string;
   readonly #options: CollaborationClientOptions;
   readonly #schedule: (callback: () => void, delayMs: number) => void;
   #transport: Transport | undefined;
@@ -86,10 +97,15 @@ export class CollaborationClient {
   /** Verrous demandés par ce client, renouvelés tant qu'ils sont tenus. */
   readonly #held = new Set<string>();
   #renewScheduled = false;
+  /** Refus reçus depuis la dernière resynchronisation. */
+  #rejected: { count: number; code: RejectMessage['code'] } | undefined;
+  /** Une resynchronisation est demandée sur la connexion courante. */
+  #syncRequested = false;
 
   constructor(options: CollaborationClientOptions) {
     this.#options = options;
     this.document = options.document ?? new BoardDocument();
+    this.clientId = options.clientId ?? createId();
     this.#schedule = options.schedule ?? ((callback, delay) => setTimeout(callback, delay));
   }
 
@@ -116,7 +132,12 @@ export class CollaborationClient {
     this.#transport = transport;
     this.#setStatus('connecting');
     this.#send({ type: 'HELLO', protocolVersion: PROTOCOL_VERSION });
-    this.#send({ type: 'JOIN', boardId: this.#options.boardId, name: this.#options.name });
+    this.#send({
+      type: 'JOIN',
+      boardId: this.#options.boardId,
+      name: this.#options.name,
+      clientId: this.clientId,
+    });
   }
 
   disconnect(): void {
@@ -128,6 +149,8 @@ export class CollaborationClient {
   /** À appeler quand le transport se ferme. */
   handleClose(): void {
     this.#transport = undefined;
+    // Une demande de resynchronisation en cours est perdue avec la connexion.
+    this.#syncRequested = false;
     this.#setStatus('closed');
   }
 
@@ -144,9 +167,11 @@ export class CollaborationClient {
     this.#pending.push({
       operations,
       inverse,
+      baseSeq: this.#seq,
       ...(gesture ? { gesture } : {}),
       ...(intent ? { intent } : {}),
     });
+    this.#notifyPending();
     if (!gesture || gesture.final) this.flush();
     else this.#scheduleFlush();
   }
@@ -161,28 +186,74 @@ export class CollaborationClient {
     } else if (this.#openGesture === gestureId) {
       // Tous les lots du geste sont partis : on signale seulement sa fin.
       this.#openGesture = undefined;
-      this.#send({ type: 'GESTURE_END', gestureId });
+      if (this.#status === 'joined') this.#send({ type: 'GESTURE_END', gestureId });
     }
   }
 
-  /** Envoie immédiatement les opérations en file, en un seul lot. */
+  /**
+   * Envoie immédiatement les opérations en file, en un seul lot.
+   * Hors connexion, elles restent en file et partiront à la reconnexion.
+   */
   flush(): void {
+    if (this.#status !== 'joined') return;
     const entries = this.#unsent();
     if (!entries.length) return;
     const batchId = createId();
-    const operations = compactOperations(entries.flatMap((entry) => entry.operations));
     const gesture = entries[entries.length - 1]?.gesture;
-    // Une annulation est envoyée seule (sans geste) : son lot porte son intention.
-    const intent = entries.length === 1 ? entries[0]?.intent : undefined;
     for (const entry of entries) entry.batchId = batchId;
     this.#openGesture = gesture && !gesture.final ? gesture.id : undefined;
+    this.#sendBatch(batchId, entries, gesture);
+  }
+
+  #sendBatch(batchId: string, entries: PendingEntry[], gesture?: Gesture): void {
+    const operations = compactOperations(entries.flatMap((entry) => entry.operations));
+    if (!operations.length) return;
+    // Une annulation est envoyée seule (sans geste) : son lot porte son intention.
+    const intent = entries.length === 1 ? entries[0]?.intent : undefined;
     this.#send({
       type: 'OPS',
       batchId,
       operations,
+      baseSeq: Math.min(...entries.map((entry) => entry.baseSeq)),
       ...(gesture ? { gesture } : {}),
       ...(intent ? { intent } : {}),
     });
+  }
+
+  /**
+   * Après une reconnexion : renvoie les lots partis sans confirmation (le serveur
+   * reconnaît ceux qu'il avait déjà appliqués), puis la file d'attente.
+   */
+  #resendPending(): void {
+    const batches = new Map<string, PendingEntry[]>();
+    for (const entry of this.#pending) {
+      if (entry.batchId === undefined) continue;
+      const entries = batches.get(entry.batchId) ?? [];
+      entries.push(entry);
+      batches.set(entry.batchId, entries);
+    }
+    // Le geste éventuellement en cours avant la coupure est clos côté serveur.
+    for (const [batchId, entries] of batches) this.#sendBatch(batchId, entries);
+    this.#openGesture = undefined;
+
+    // Modifications faites hors connexion : un lot par action (un geste = une action),
+    // pour qu'un conflit n'entraîne que le refus de l'action concernée.
+    const unsent = this.#unsent();
+    const groups: PendingEntry[][] = [];
+    for (const entry of unsent) {
+      const last = groups[groups.length - 1];
+      const previous = last?.[last.length - 1];
+      if (last && entry.gesture && previous?.gesture?.id === entry.gesture.id) last.push(entry);
+      else groups.push([entry]);
+    }
+    const lastGroup = groups.pop();
+    for (const group of groups) {
+      const batchId = createId();
+      for (const entry of group) entry.batchId = batchId;
+      this.#sendBatch(batchId, group);
+    }
+    // Le dernier groupe peut être un geste encore en cours : il suit le circuit normal.
+    if (lastGroup?.length) this.flush();
   }
 
   /** Verrouille des objets avant de les modifier (renouvelé jusqu'à `unlock`). */
@@ -234,25 +305,52 @@ export class CollaborationClient {
         this.#options.onLocks?.(this.#locks);
         // Verrous tenus avant une reconnexion : on les redemande.
         if (this.#held.size) this.#send({ type: 'LOCK', objectIds: [...this.#held] });
+        // Lots appliqués par le serveur dont l'accusé s'est perdu : déjà dans l'état reçu.
+        if (message.applied.length) {
+          const applied = new Set(message.applied);
+          this.#pending = this.#pending.filter(
+            ({ batchId }) => batchId === undefined || !applied.has(batchId),
+          );
+        }
         this.#loadSnapshot(message.snapshot);
+        // L'état complet vient d'être reçu : les refus antérieurs sont résolus.
+        this.#syncRequested = false;
+        this.#reportRejections();
         this.#participants = message.participants;
         this.#options.onParticipants?.(this.#participants);
         this.#setStatus('joined');
+        this.#resendPending();
         break;
       case 'SNAPSHOT':
         this.#loadSnapshot(message.snapshot);
+        this.#syncRequested = false;
+        this.#reportRejections();
         break;
       case 'ACK': {
         this.#pending = this.#pending.filter(({ batchId }) => batchId !== message.batchId);
+        this.#notifyPending();
+        // Lot appliqué plus tôt : il a pu être réappliqué ici par-dessus des modifications
+        // plus récentes. L'état du serveur fait foi.
+        if (message.duplicate && !this.#syncRequested) {
+          this.#syncRequested = true;
+          this.#send({ type: 'SYNC_REQUEST' });
+        }
         this.#seq = Math.max(this.#seq, message.seq);
         this.#storeVersions(message.versions);
         break;
       }
       case 'REJECT': {
-        // État local divergent : on abandonne les opérations en attente et on resynchronise.
-        this.#pending = [];
-        this.#send({ type: 'SYNC_REQUEST' });
-        this.#options.onRejected?.(message.code, message.message);
+        // Seul ce lot est abandonné ; l'état du serveur fait foi (resynchronisation).
+        this.#pending = this.#pending.filter(({ batchId }) => batchId !== message.batchId);
+        this.#notifyPending();
+        if (!this.#syncRequested) {
+          this.#syncRequested = true;
+          this.#send({ type: 'SYNC_REQUEST' });
+        }
+        this.#rejected = {
+          count: (this.#rejected?.count ?? 0) + 1,
+          code: message.code,
+        };
         break;
       }
       case 'LOCKS':
@@ -336,6 +434,7 @@ export class CollaborationClient {
       }
     }
     this.#pending = kept;
+    this.#notifyPending();
   }
 
   #tryApply(operations: Operation[]): boolean {
@@ -350,6 +449,7 @@ export class CollaborationClient {
   /** Divergence détectée : on repart de l'état du serveur. */
   #resync(): void {
     this.#pending = [];
+    this.#notifyPending();
     this.#send({ type: 'SYNC_REQUEST' });
   }
 
@@ -397,6 +497,31 @@ export class CollaborationClient {
 
   #send(message: ClientSessionMessage | { type: 'HELLO'; protocolVersion: number }): void {
     this.#transport?.send(JSON.stringify(message));
+  }
+
+  /** Signale en une fois les refus accumulés avant la dernière resynchronisation. */
+  #reportRejections(): void {
+    if (!this.#rejected) return;
+    this.#options.onRejected?.(this.#rejected.code, this.#rejected.count);
+    this.#rejected = undefined;
+  }
+
+  #notifyPending(): void {
+    this.#options.onPending?.(this.pendingActions);
+  }
+
+  /** Actions locales non confirmées (un geste compte pour une action). */
+  get pendingActions(): number {
+    const gestures = new Set<string>();
+    let count = 0;
+    for (const entry of this.#pending) {
+      if (!entry.gesture) count += 1;
+      else if (!gestures.has(entry.gesture.id)) {
+        gestures.add(entry.gesture.id);
+        count += 1;
+      }
+    }
+    return count;
   }
 
   #setStatus(status: ConnectionStatus): void {

@@ -49,6 +49,8 @@ type OpenGesture = { id: string; operations: Operation[]; seq: number };
  */
 export class CollaborationHub {
   readonly #rooms = new Map<string, Promise<LoadedRoom>>();
+  /** Boards chargés, accessibles sans attente (vérifications synchrones). */
+  readonly #loaded = new Map<string, LoadedRoom>();
   readonly #pubsub: PubSub<Broadcast>;
   readonly #store: BoardStore;
   readonly #log: HubLogger | undefined;
@@ -112,8 +114,12 @@ export class CollaborationHub {
     send: (message: ServerSessionMessage) => void,
     disconnect?: () => void,
   ): HubConnection {
-    let joined: { boardId: string; loaded: LoadedRoom; unsubscribe: Unsubscribe } | undefined;
+    let joined:
+      | { boardId: string; loaded: LoadedRoom; unsubscribe: Unsubscribe; clientId: string }
+      | undefined;
     let gesture: OpenGesture | undefined;
+    /** Auteur journalisé : le client (stable à travers les reconnexions). */
+    let actor = connectionId;
     // Les messages d'une connexion sont traités l'un après l'autre (le JOIN est asynchrone).
     let queue = Promise.resolve();
     if (disconnect) this.#disconnects.set(connectionId, disconnect);
@@ -123,7 +129,7 @@ export class CollaborationHub {
       if (!gesture) return [];
       const entry: JournalEntry = {
         seq: gesture.seq,
-        actor: connectionId,
+        actor,
         gestureId: gesture.id,
         operations: compactOperations(gesture.operations),
       };
@@ -154,7 +160,7 @@ export class CollaborationHub {
       switch (message.type) {
         case 'JOIN': {
           leave();
-          const loaded = await this.#load(message.boardId);
+          const loaded = await this.#join(message.boardId);
           const participant = { connectionId, name: message.name };
           loaded.participants.set(connectionId, participant);
           const unsubscribe = this.#pubsub.subscribe(
@@ -163,13 +169,15 @@ export class CollaborationHub {
               if (exclude !== connectionId) send(payload);
             },
           );
-          joined = { boardId: message.boardId, loaded, unsubscribe };
+          joined = { boardId: message.boardId, loaded, unsubscribe, clientId: message.clientId };
+          actor = message.clientId;
           send({
             type: 'JOINED',
             self: connectionId,
             snapshot: loaded.room.snapshot(),
             participants: [...loaded.participants.values()],
             locks: loaded.locks.snapshot(),
+            applied: loaded.room.appliedBatchesOf(message.clientId),
           });
           void this.#pubsub.publish(channel(message.boardId), {
             payload: { type: 'PARTICIPANT_JOINED', participant },
@@ -226,7 +234,7 @@ export class CollaborationHub {
             });
             return;
           }
-          const { boardId, loaded } = joined;
+          const { boardId, loaded, clientId } = joined;
           // Un objet verrouillé par un autre participant n'est pas modifiable.
           const touched = touchedIds(message.operations);
           const holder = [...touched]
@@ -241,15 +249,27 @@ export class CollaborationHub {
             });
             return;
           }
-          const result = loaded.room.apply(message.operations);
+          const result = loaded.room.apply(message.operations, {
+            actor: clientId,
+            baseSeq: message.baseSeq,
+            batchId: message.batchId,
+          });
           if (!result.ok) {
             this.#log?.warn({ connectionId, boardId, reason: result.message }, 'lot refusé');
             send({
               type: 'REJECT',
               batchId: message.batchId,
-              code: 'INVALID_OPERATION',
+              code: result.code === 'CONFLICT' ? 'CONFLICT' : 'INVALID_OPERATION',
               message: result.message,
             });
+            return;
+          }
+          if (result.duplicate) {
+            // Lot renvoyé après une reconnexion, déjà appliqué : on le confirme seulement.
+            const seq = result.seq;
+            loaded.persistence = loaded.persistence.then(() =>
+              send({ type: 'ACK', batchId: message.batchId, seq, versions: {}, duplicate: true }),
+            );
             return;
           }
 
@@ -267,7 +287,7 @@ export class CollaborationHub {
           } else {
             journal.push({
               seq: result.seq,
-              actor: connectionId,
+              actor,
               operations: message.operations,
               ...(message.intent ? { intent: message.intent } : {}),
             });
@@ -329,17 +349,34 @@ export class CollaborationHub {
     };
   }
 
+  /**
+   * Board à rejoindre. Il a pu être déchargé pendant son attente (dernier participant
+   * parti au même moment) : on le recharge alors, pour ne jamais rejoindre un board
+   * qui n'est plus celui que les autres connexions utiliseront.
+   */
+  async #join(boardId: string): Promise<LoadedRoom> {
+    for (;;) {
+      const loaded = await this.#load(boardId);
+      if (this.#loaded.get(boardId) === loaded && !loaded.broken) return loaded;
+    }
+  }
+
   /** Charge un board (une seule fois, même si plusieurs connexions le demandent). */
   #load(boardId: string): Promise<LoadedRoom> {
     let loading = this.#rooms.get(boardId);
     if (!loading) {
-      loading = this.#store.load(boardId).then((stored) => ({
-        room: new BoardRoom(boardId, stored),
-        participants: new Map<string, Participant>(),
-        locks: new LockTable(this.#lockOptions),
-        persistence: Promise.resolve(),
-        broken: false,
-      }));
+      const promise: Promise<LoadedRoom> = this.#store.load(boardId).then((stored) => {
+        const loaded: LoadedRoom = {
+          room: new BoardRoom(boardId, stored),
+          participants: new Map<string, Participant>(),
+          locks: new LockTable(this.#lockOptions),
+          persistence: Promise.resolve(),
+          broken: false,
+        };
+        if (this.#rooms.get(boardId) === promise) this.#loaded.set(boardId, loaded);
+        return loaded;
+      });
+      loading = promise;
       this.#rooms.set(boardId, loading);
       // Un échec de chargement ne doit pas rester en cache.
       loading.catch(() => this.#rooms.delete(boardId));
@@ -390,18 +427,23 @@ export class CollaborationHub {
     if (loaded.broken) return;
     loaded.broken = true;
     this.#log?.error({ boardId, error: String(error) }, 'échec de l’enregistrement du board');
-    this.#rooms.delete(boardId);
+    this.#unload(boardId, loaded);
     for (const connectionId of loaded.participants.keys()) this.#disconnects.get(connectionId)?.();
   }
 
   /** Décharge un board sans participant une fois ses enregistrements terminés. */
   #evictIfEmpty(boardId: string, loaded: LoadedRoom): void {
     if (loaded.participants.size > 0) return;
-    void loaded.persistence.then(async () => {
-      if (loaded.participants.size === 0 && (await this.#rooms.get(boardId)) === loaded) {
-        this.#rooms.delete(boardId);
-      }
+    void loaded.persistence.then(() => {
+      // Vérification synchrone : personne ne peut rejoindre entre le test et le déchargement.
+      if (loaded.participants.size === 0) this.#unload(boardId, loaded);
     });
+  }
+
+  #unload(boardId: string, loaded: LoadedRoom): void {
+    if (this.#loaded.get(boardId) !== loaded) return;
+    this.#loaded.delete(boardId);
+    this.#rooms.delete(boardId);
   }
 }
 

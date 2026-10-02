@@ -143,7 +143,7 @@ describe.skipIf(!url)('PostgresBoardStore', () => {
       };
       socket.send(JSON.stringify({ type: 'HELLO', protocolVersion: 1 }));
       await waitFor('HELLO');
-      socket.send(JSON.stringify({ type: 'JOIN', boardId, name: 'Alice' }));
+      socket.send(JSON.stringify({ type: 'JOIN', boardId, name: 'Alice', clientId: 'alice' }));
       return { socket, joined: await waitFor('JOINED'), waitFor };
     };
 
@@ -153,6 +153,7 @@ describe.skipIf(!url)('PostgresBoardStore', () => {
       JSON.stringify({
         type: 'OPS',
         batchId: 'b1',
+        baseSeq: 0,
         operations: [{ kind: 'create', object: rectangle('router') }],
       }),
     );

@@ -120,4 +120,20 @@ export const MILESTONES: Milestone[] = [
       'Supprimer sur l’iPad un objet déplacé sur le PC, puis Ctrl+Z sur le PC : message « Annulation impossible ».',
     ],
   },
+  {
+    id: 'M0.9',
+    title: 'Reconnexion',
+    summary: 'Coupure réseau : on continue en local, tout se resynchronise au retour.',
+    href: '#/board/test-m09',
+    linkLabel: 'Board « test-m09 »',
+    needsApi: true,
+    multiDevice: true,
+    steps: [
+      'Sur l’iPad : activer le mode Avion — l’encart indique « Hors ligne » et les modifications en attente.',
+      'Sur l’iPad, hors ligne : déplacer des objets, dessiner, renommer le Switch.',
+      'Sur le PC, pendant ce temps : renommer le Firewall et aussi le Switch.',
+      'Couper le mode Avion : reconnexion automatique, les deux appareils affichent le même board.',
+      'Le Switch garde le nom donné sur le PC (arrivé en premier) ; l’iPad affiche « 1 modification n’a pas pu être appliquée ».',
+    ],
+  },
 ];

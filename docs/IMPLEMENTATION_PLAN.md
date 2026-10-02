@@ -218,10 +218,13 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 
 ### M0.9 — Reconnexion
 
-- [ ] File locale, `SYNC_REQUEST`/`SYNC_RESPONSE`
-- [ ] Rejets + notification groupée
+- [x] File locale : hors connexion, les modifications s'appliquent et restent en attente ; reconnexion automatique (délai croissant, immédiate au retour du réseau)
+- [x] À la reconnexion : état complet (`JOINED`), lots déjà appliqués dont l'accusé s'est perdu retirés de la file, lots non confirmés renvoyés (dédoublonnés par le serveur), modifications hors ligne envoyées **une action par lot**
+- [x] Conflits au niveau de la **propriété** : un lot qui modifie une propriété changée par un autre client après sa `baseSeq` est refusé (`CONFLICT`) ; identité de client stable à travers les reconnexions (`clientId`)
+- [x] Rejets + notification groupée après resynchronisation ; indicateur « Hors ligne — N modifications en attente »
 
 **Critère** : couper le réseau 30 s pendant qu'on dessine, puis rétablir → état convergent sur tous les clients.
+→ **Validé** : test aléatoire à 3 clients avec coupures et reconnexions (1 000 graines × 60 actions en vérification ponctuelle, 30 en CI), scénarios ciblés (modifications hors ligne, conflit, accusé perdu, geste interrompu), et essai dans deux navigateurs avec coupure réseau (`setOffline`) : convergence, conflit signalé.
 
 ### M0.10 — Audit log
 
@@ -354,6 +357,8 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 | Date | Décision |
 |---|---|
 | 2026-10-01 | Plan validé ; décisions D1 à D22 actées |
+| 2026-10-02 | M0.9 : en cas de modifications concurrentes d'une même propriété, le **premier lot arrivé au serveur l'emporte**, le second est refusé (`CONFLICT`) puis resynchronisé — remplace le « dernier qui écrit gagne » de M0.5 ; des propriétés différentes d'un même objet restent fusionnées |
+| 2026-10-02 | M0.9 : deux bugs trouvés par le test aléatoire et corrigés — (1) un board déchargé de la mémoire pendant qu'un participant le rejoignait (course entre départ du dernier et arrivée du suivant, présente depuis M0.6) ; (2) une resynchronisation demandée juste avant une coupure n'était jamais redemandée |
 | 2026-10-01 | M0.8 : l'historique vit côté client pendant la session ; sa reconstruction depuis le journal au rechargement attend l'authentification (M1.1), car l'acteur journalisé est encore une connexion et non un utilisateur |
 | 2026-10-01 | M0.7 : les verrous ne sont pas persistés (état éphémère en mémoire du serveur) ; le client verrouille de façon optimiste — en cas de course, le serveur refuse le lot (`LOCKED`) et le client est resynchronisé |
 | 2026-10-01 | M0.6 : `ACK` et diffusion après l'enregistrement (durabilité avant latence ; quelques ms en local). Nouveau message `GESTURE_END` quand tous les lots d'un geste sont déjà partis au relâchement |
