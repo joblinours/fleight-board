@@ -2,7 +2,7 @@
 
 > Whiteboard collaboratif temps réel, self-hosted, Docker-first, extensible par plugins et conçu dès le départ pour desktop, tablette et Apple Pencil.
 
-![Statut](https://img.shields.io/badge/statut-conception-orange)
+![Statut](https://img.shields.io/badge/statut-phase%201%20(MVP)-blue)
 ![Phase](https://img.shields.io/badge/phase-0%20%E2%80%94%20Proof%20of%20Concept-blue)
 ![Licence](https://img.shields.io/badge/licence-C8CL%20%2B%20commerciale-lightgrey)
 
@@ -327,7 +327,7 @@ TEST_DATABASE_URL=postgres://fleight:fleight@localhost:5432/fleight pnpm test
 
 Le plan détaillé (jalons, critères de validation, décisions) est tenu dans [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) sur la branche `dev`.
 
-- [ ] **Phase 0 — Proof of Concept technique** : canvas desktop + iPad/Apple Pencil, objets structurés, connecteurs, WebSocket, 2+ utilisateurs, locks, undo individuel, persistance, reconnexion, audit log. Jalons M0.1 à M0.11 terminés — [rapport de fin de phase](docs/poc-report.md), go/no-go en cours.
+- [x] **Phase 0 — Proof of Concept technique** : canvas desktop + iPad/Apple Pencil, objets structurés, connecteurs, WebSocket, 2+ utilisateurs, locks, undo individuel, persistance, reconnexion, audit log. Terminée le 2 octobre 2026 — [rapport de fin de phase](docs/poc-report.md).
 - [ ] **Phase 1 — Core MVP** : auth locale, Users/Admins, canvas standard et infini, primitives, texte, images, dessin libre, sélection, groupes, frames, connecteurs, undo/redo, collaboration temps réel, locks, curseurs, présence, sessions par code, public/privé, permissions, guests, audit log.
 - [ ] **Phase 2 — Produit utilisable** : présentation, share links, import PDF/SVG/images, export SVG/PNG/PDF, rétention, limites de stockage, MFA, administration complète, transfert de propriété, reconnexion robuste, interface tablette complète.
 - [ ] **Phase 3 — Système de plugins** : SDK, API, permissions, sandbox, installation ZIP, cycle de vie, marketplace, plugin Network.
