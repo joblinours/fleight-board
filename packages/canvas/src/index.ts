@@ -4,6 +4,7 @@ export {
   type GestureInfo,
   type LockService,
   type OperationSink,
+  type RemoteCursor,
   type StyleChange,
   stylePatch,
 } from './board/editor';

@@ -33,9 +33,35 @@ export const GestureSchema = z.object({
 export const IntentSchema = z.enum(['undo', 'redo']);
 export type Intent = z.infer<typeof IntentSchema>;
 
+/**
+ * Partage de la présence : « drawing » (Drawing only) ne montre que les dessins,
+ * « cursor » (Cursor visible) montre aussi le curseur aux autres participants.
+ */
+export const PresenceModeSchema = z.enum(['drawing', 'cursor']);
+export type PresenceMode = z.infer<typeof PresenceModeSchema>;
+
+/** Palette des participants : chacun reçoit une couleur libre dans le board. */
+export const PARTICIPANT_COLORS = [
+  '#e11d48',
+  '#2563eb',
+  '#16a34a',
+  '#ea580c',
+  '#7c3aed',
+  '#0891b2',
+  '#db2777',
+  '#ca8a04',
+  '#4f46e5',
+  '#059669',
+] as const;
+
 export const ParticipantSchema = z.object({
   connectionId: z.string(),
   name: z.string(),
+  /** Compte de l'utilisateur (absent sans authentification). */
+  userId: z.string().optional(),
+  /** Couleur attribuée par le serveur (curseur, verrous). */
+  color: z.string(),
+  mode: PresenceModeSchema,
 });
 export type Participant = z.infer<typeof ParticipantSchema>;
 
@@ -51,6 +77,8 @@ export const JoinMessageSchema = z.object({
    * reconnexions (une connexion WebSocket, elle, change à chaque fois).
    */
   clientId: z.string().min(1).max(64),
+  /** Mode de présence (conservé à travers les reconnexions). */
+  mode: PresenceModeSchema.optional(),
 });
 
 export const LeaveMessageSchema = z.object({ type: z.literal('LEAVE') });
@@ -88,6 +116,23 @@ export const UnlockMessageSchema = z.object({
   objectIds: ObjectIdsSchema,
 });
 
+/** Position du curseur en coordonnées monde ; `null` : curseur hors du board. */
+export const CursorPositionSchema = z
+  .object({ x: z.number().finite(), y: z.number().finite() })
+  .nullable();
+
+/** Curseur de l'utilisateur, relayé aux autres participants en mode « cursor ». */
+export const CursorMessageSchema = z.object({
+  type: z.literal('CURSOR'),
+  position: CursorPositionSchema,
+});
+
+/** Changement du mode de présence. */
+export const PresenceModeMessageSchema = z.object({
+  type: z.literal('PRESENCE_MODE'),
+  mode: PresenceModeSchema,
+});
+
 /** Demande de l'état complet du board (après un rejet, par exemple). */
 export const SyncRequestSchema = z.object({ type: z.literal('SYNC_REQUEST') });
 
@@ -99,6 +144,8 @@ export const ClientSessionMessageSchema = z.discriminatedUnion('type', [
   LockMessageSchema,
   UnlockMessageSchema,
   SyncRequestSchema,
+  CursorMessageSchema,
+  PresenceModeMessageSchema,
 ]);
 export type ClientSessionMessage = z.infer<typeof ClientSessionMessageSchema>;
 export type OperationsMessage = z.infer<typeof OperationsMessageSchema>;
@@ -189,6 +236,19 @@ export const ParticipantLeftSchema = z.object({
   connectionId: z.string(),
 });
 
+/** Participant modifié (mode de présence). */
+export const ParticipantUpdatedSchema = z.object({
+  type: z.literal('PARTICIPANT_UPDATED'),
+  participant: ParticipantSchema,
+});
+
+/** Curseur d'un autre participant. */
+export const RemoteCursorSchema = z.object({
+  type: z.literal('CURSOR'),
+  connectionId: z.string(),
+  position: CursorPositionSchema,
+});
+
 export const ServerSessionMessageSchema = z.discriminatedUnion('type', [
   JoinedMessageSchema,
   SnapshotMessageSchema,
@@ -197,6 +257,8 @@ export const ServerSessionMessageSchema = z.discriminatedUnion('type', [
   RejectMessageSchema,
   ParticipantJoinedSchema,
   ParticipantLeftSchema,
+  ParticipantUpdatedSchema,
+  RemoteCursorSchema,
   LocksMessageSchema,
   LockDeniedSchema,
 ]);

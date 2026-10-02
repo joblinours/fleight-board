@@ -1,6 +1,11 @@
 import { BoardEditor, type InputMode, type ToolName } from '@fleight/canvas';
 import { CollaborationClient, type ConnectionStatus } from '@fleight/collaboration';
-import { AssetResponseSchema, type BoardSummary, type Participant } from '@fleight/protocol';
+import {
+  AssetResponseSchema,
+  type BoardSummary,
+  type Participant,
+  type PresenceMode,
+} from '@fleight/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { refreshSession, useSession } from '../auth/session';
 import { createImageCache } from './image-cache';
@@ -38,6 +43,17 @@ const TOOLS: Array<{ name: ToolName; label: string; key: string }> = [
   { name: 'frame', label: 'Frame', key: 'F' },
 ];
 
+const PRESENCE_KEY = 'fleight.presenceMode';
+
+/** Mode de présence choisi précédemment (« cursor » par défaut). */
+function storedPresenceMode(): PresenceMode {
+  try {
+    return localStorage.getItem(PRESENCE_KEY) === 'drawing' ? 'drawing' : 'cursor';
+  } catch {
+    return 'cursor';
+  }
+}
+
 /** Whiteboard local (`board` absent) ou collaboratif. */
 export function BoardPage({ board }: { board?: BoardSummary }) {
   const boardId = board?.id;
@@ -61,6 +77,9 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
   const [viewVersion, setViewVersion] = useState(0);
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
   const [participants, setParticipants] = useState<readonly Participant[]>([]);
+  const [presenceMode, setPresenceMode] = useState<PresenceMode>(storedPresenceMode);
+  const [self, setSelf] = useState<string | undefined>();
+  const clientRef = useRef<CollaborationClient | null>(null);
   const [rejection, setRejection] = useState<string | null>(null);
   const [history, setHistory] = useState({ canUndo: false, canRedo: false });
   const [pending, setPending] = useState(0);
@@ -81,7 +100,12 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
       ? new CollaborationClient({
           boardId,
           name: userName.current,
-          onStatus: setStatus,
+          mode: storedPresenceMode(),
+          onStatus: (value) => {
+            setStatus(value);
+            setSelf(clientRef.current?.connectionId);
+          },
+          onCursors: () => editorRef.current?.refresh(),
           onParticipants: (list) => {
             setParticipants(list);
             editorRef.current?.refresh();
@@ -98,6 +122,7 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
             setRejection('Cet objet est en cours de modification par un autre participant.'),
         })
       : undefined;
+    clientRef.current = client ?? null;
     // Connexion perdue : la session a peut-être expiré ou été révoquée (retour à la connexion).
     const disconnect = client
       ? connectWebSocket(client, undefined, (code) => {
@@ -116,6 +141,17 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
         ? {
             document: client.document,
             locks: createLockService(client),
+            remoteCursors: function* () {
+              for (const [connectionId, position] of client.cursors) {
+                const participant = client.participants.find(
+                  (current) => current.connectionId === connectionId,
+                );
+                if (participant?.mode === 'cursor') {
+                  yield { ...position, name: participant.name, color: participant.color };
+                }
+              }
+            },
+            onPointerMove: (position) => client.moveCursor(position),
             sink: {
               apply: (operations, gesture, intent) =>
                 client.applyLocal(operations, gesture, intent),
@@ -160,6 +196,7 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
       disconnect?.();
       editor.dispose();
       editorRef.current = null;
+      clientRef.current = null;
     };
   }, [boardId]);
 
@@ -172,6 +209,16 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
   useEffect(() => {
     if (editorRef.current) editorRef.current.inputMode = mode;
   }, [mode]);
+
+  const changePresenceMode = (next: PresenceMode) => {
+    setPresenceMode(next);
+    clientRef.current?.setPresenceMode(next);
+    try {
+      localStorage.setItem(PRESENCE_KEY, next);
+    } catch {
+      // Préférence non mémorisée (navigation privée) : sans conséquence.
+    }
+  };
 
   // Focus de la zone de texte à l'ouverture de l'édition.
   useEffect(() => {
@@ -373,9 +420,29 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
           <span className="board-room">
             {board?.name} · code <strong>{board?.code}</strong>
           </span>
-          <ul>
-            {participants.map(({ connectionId, name }) => (
-              <li key={connectionId}>{name}</li>
+          <label className="board-presence">
+            Présence
+            <select
+              value={presenceMode}
+              onChange={(event) => changePresenceMode(event.target.value as PresenceMode)}
+            >
+              <option value="cursor">Cursor visible</option>
+              <option value="drawing">Drawing only</option>
+            </select>
+          </label>
+          <ul className="board-participants" aria-label="Participants">
+            {participants.map(({ connectionId, name, color, mode: participantMode }) => (
+              <li key={connectionId}>
+                <span className="board-participant-dot" style={{ background: color }} />
+                {name}
+                {connectionId === self && <span className="board-participant-self"> (vous)</span>}
+                <span
+                  className="board-participant-mode"
+                  title={participantMode === 'cursor' ? 'Cursor visible' : 'Drawing only'}
+                >
+                  {participantMode === 'cursor' ? 'curseur' : 'dessin seul'}
+                </span>
+              </li>
             ))}
           </ul>
         </div>

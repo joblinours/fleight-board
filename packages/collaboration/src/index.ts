@@ -11,6 +11,8 @@ export {
   type CollaborationClientOptions,
   type CollaborationEvents,
   type ConnectionStatus,
+  CURSOR_SEND_MS,
+  type CursorPoint,
   LOCK_RENEW_MS,
   type Transport,
 } from './client';
@@ -20,6 +22,7 @@ export {
   type DisconnectReason,
   type HubConnection,
   type HubLogger,
+  pickColor,
 } from './hub';
 export { type AcquireResult, LOCK_TTL_MS, LockTable } from './locks';
 export { InMemoryPubSub, type PubSub, type Unsubscribe } from './pubsub';

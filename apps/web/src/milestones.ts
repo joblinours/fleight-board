@@ -250,4 +250,21 @@ export const MILESTONES: Milestone[] = [
       'Panneau : tracé Orthogonal / Droit, pointes de flèche au début et à la fin.',
     ],
   },
+  {
+    id: 'M1.6',
+    title: 'Présence',
+    summary:
+      'Curseurs nommés et colorés, liste des participants, modes « Drawing only » / « Cursor visible ».',
+    href: '#/',
+    linkLabel: 'Ouvrir un de mes boards (ci-dessus)',
+    needsApi: true,
+    multiDevice: true,
+    steps: [
+      'Ouvrir le même board sur deux appareils : chacun voit le curseur de l’autre, avec son nom et sa couleur.',
+      'La liste en bas à droite montre les participants, leur couleur et leur mode ; « (vous) » vous désigne.',
+      'Passer en « Drawing only » : votre curseur disparaît chez l’autre, vos dessins restent visibles.',
+      'Recharger la page : le mode choisi est conservé.',
+      'Un objet en cours de modification est encadré à la couleur de son auteur.',
+    ],
+  },
 ];

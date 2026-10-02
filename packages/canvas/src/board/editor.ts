@@ -80,6 +80,9 @@ export type LockService = {
   release(ids: string[]): void;
 };
 
+/** Curseur d'un autre participant, en coordonnées monde. */
+export type RemoteCursor = { x: number; y: number; name: string; color: string };
+
 export type BoardEditorOptions = {
   /** Calque des objets. */
   sceneCanvas: HTMLCanvasElement;
@@ -102,6 +105,13 @@ export type BoardEditorOptions = {
   page?: Page;
   /** Contenu des objets `image` (chargé par l'application). */
   images?: ImageSource;
+  /** Curseurs des autres participants, dessinés sur le calque d'interface. */
+  remoteCursors?: () => Iterable<RemoteCursor>;
+  /**
+   * Position du pointeur (souris, stylet au survol, doigt posé) en coordonnées
+   * monde ; `null` quand il quitte le board.
+   */
+  onPointerMove?(position: Point | null): void;
 };
 
 /**
@@ -248,6 +258,27 @@ export class BoardEditor {
       }),
     );
     this.#cleanups.push(this.#attachKeyboard());
+    if (options.onPointerMove)
+      this.#cleanups.push(this.#attachPointerTracking(options.onPointerMove));
+  }
+
+  /** Suivi du pointeur pour la présence (indépendant des gestes de dessin). */
+  #attachPointerTracking(onMove: (position: Point | null) => void): () => void {
+    const canvas = this.#options.overlayCanvas;
+    const onPointerMove = (event: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      onMove(
+        this.camera.screenToWorld({ x: event.clientX - rect.left, y: event.clientY - rect.top }),
+      );
+    };
+    const onPointerLeave = () => onMove(null);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerleave', onPointerLeave);
+    return () => {
+      canvas.removeEventListener('pointermove', onPointerMove);
+      canvas.removeEventListener('pointerleave', onPointerLeave);
+      onMove(null);
+    };
   }
 
   get tool(): ToolName {
@@ -781,6 +812,43 @@ export class BoardEditor {
 
     this.#paintLocks(ctx, view);
     this.#tool.paint?.(ctx, view, this.#context);
+    this.#paintCursors(ctx, view);
+  }
+
+  /** Curseurs des autres participants : flèche et nom à leur couleur, taille fixe à l'écran. */
+  #paintCursors(ctx: CanvasRenderingContext2D, view: ViewState): void {
+    const cursors = this.#options.remoteCursors?.();
+    if (!cursors) return;
+    const scale = 1 / view.zoom;
+    ctx.save();
+    ctx.font = `600 12px system-ui, sans-serif`;
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    for (const cursor of cursors) {
+      ctx.save();
+      ctx.translate(cursor.x, cursor.y);
+      ctx.scale(scale, scale);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, 17);
+      ctx.lineTo(4.5, 13);
+      ctx.lineTo(8, 20);
+      ctx.lineTo(10.5, 19);
+      ctx.lineTo(7, 12);
+      ctx.lineTo(12.5, 12);
+      ctx.closePath();
+      ctx.fillStyle = cursor.color;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.fill();
+      ctx.stroke();
+      const width = ctx.measureText(cursor.name).width + 12;
+      ctx.fillRect(12, 18, width, 20);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(cursor.name, 18, 28);
+      ctx.restore();
+    }
+    ctx.restore();
   }
 
   /** Objets modifiés par d'autres participants : cadre et nom à leur couleur. */
