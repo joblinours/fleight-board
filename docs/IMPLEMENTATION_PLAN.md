@@ -240,14 +240,14 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 - [x] Créations, modifications, suppressions, locks, déconnexions et undo concurrents
 - [x] Vérification de convergence : tous les clients finissent avec le même état que le serveur, sans modification en attente ni verrou résiduel
 
-→ **Validé** : convergence sur 1 050 scénarios aléatoires en vérification ponctuelle (500 à 2 utilisateurs, 300 à 5, 150 à 20, 100 à 50 ; 21 en CI), et test de charge de 30 s par palier sur WebSocket + PostgreSQL (machine de 4 cœurs partagée par l'API, la base et le générateur) :
+→ **Validé** : convergence sur 1 050 scénarios aléatoires avec enregistrement lent, en vérification ponctuelle (500 à 2 utilisateurs, 300 à 5, 150 à 20, 100 à 50 ; 21 en CI), test de charge WebSocket à 50 utilisateurs convergent 20 fois sur 20, et test de charge de 30 s par palier sur WebSocket + PostgreSQL (machine de 4 cœurs partagée par l'API, la base et le générateur) :
 
 | Utilisateurs | Lots/s | ACK p50 / p95 / p99 (ms) | Diffusion p50 / p95 / p99 (ms) | Convergence |
 |---|---|---|---|---|
-| 2 | 12 | 6 / 9.9 / 15.4 | 6.2 / 10.2 / 15.6 | ✅ |
-| 5 | 28 | 5.3 / 9.5 / 13.7 | 5.6 / 9.8 / 13.8 | ✅ |
-| 20 | 115 | 4.7 / 10.2 / 13.1 | 5.1 / 10.6 / 13.7 | ✅ |
-| 50 | 280 | 8 / 16.8 / 25.3 | 8.6 / 17.4 / 25.6 | ✅ |
+| 2 | 12 | 6.1 / 9.4 / 12.5 | 6.3 / 9.6 / 12.6 | ✅ |
+| 5 | 28 | 5.2 / 9.3 / 12.9 | 5.4 / 9.5 / 13.2 | ✅ |
+| 20 | 115 | 4.9 / 10.8 / 14.3 | 5.3 / 11.2 / 14.8 | ✅ |
+| 50 | 280 | 8.5 / 18 / 27 | 9.1 / 18.7 / 27.8 | ✅ |
 
 Au-delà de l'objectif, sur un seul board : 100 utilisateurs → ACK p50 115 ms, 200 → 430 ms, toujours convergents ; mesure limitée par le générateur (un seul processus Node qui fait tourner tous les clients) sur la même machine.
 
