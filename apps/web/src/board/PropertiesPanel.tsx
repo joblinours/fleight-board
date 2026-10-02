@@ -17,6 +17,7 @@ const FIELDS: Record<BoardObject['type'], Field[]> = {
   connector: ['stroke', 'strokeWidth', 'arrows', 'opacity'],
   stroke: ['stroke', 'strokeWidth', 'opacity'],
   image: ['opacity'],
+  frame: ['fill', 'opacity'],
 };
 
 /** Sans sélection : propriétés des objets que l'outil va créer. */
@@ -68,6 +69,8 @@ function currentValues(editor: BoardEditor, object: BoardObject | undefined) {
       return { ...values, stroke: object.color, fontSize: object.fontSize };
     case 'stroke':
       return { ...values, stroke: object.color, strokeWidth: object.size };
+    case 'frame':
+      return { ...values, fill: object.fill };
     default:
       return values;
   }
@@ -86,7 +89,8 @@ export function PropertiesPanel({ editor, tool }: { editor: BoardEditor | null; 
   const fields = new Set<Field>(
     objects.length ? objects.flatMap((object) => FIELDS[object.type]) : (TOOL_FIELDS[tool] ?? []),
   );
-  if (!fields.size) return null;
+  const showActions = objects.length > 0 || (tool === 'select' && editor.canPaste);
+  if (!fields.size && !showActions) return null;
   const values = currentValues(editor, objects[0]);
   const penTool = !objects.length && (tool === 'pen' || tool === 'highlighter');
 
@@ -104,8 +108,86 @@ export function PropertiesPanel({ editor, tool }: { editor: BoardEditor | null; 
     }
   };
 
+  /** Action sur la sélection, puis re-rendu (Coller, Grouper… changent de disponibilité). */
+  const act = (action: () => void) => {
+    action();
+    setVersion((version) => version + 1);
+  };
+  const copy = (cut: boolean) => {
+    const text = cut ? editor.cutSelection() : editor.copySelection();
+    // Aussi dans le presse-papiers système, pour coller dans un autre board.
+    if (text) void navigator.clipboard?.writeText(text).catch(() => {});
+  };
+
   return (
     <aside className="board-properties" aria-label="Propriétés">
+      {showActions && (
+        <div className="board-actions" role="toolbar" aria-label="Actions sur la sélection">
+          {objects.length > 0 && (
+            <>
+              <button
+                type="button"
+                title="Copier (Ctrl/⌘+C)"
+                onClick={() => act(() => copy(false))}
+              >
+                Copier
+              </button>
+              <button type="button" title="Couper (Ctrl/⌘+X)" onClick={() => act(() => copy(true))}>
+                Couper
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            title="Coller (Ctrl/⌘+V)"
+            disabled={!editor.canPaste}
+            onClick={() => act(() => editor.paste())}
+          >
+            Coller
+          </button>
+          {objects.length > 0 && (
+            <>
+              <button
+                type="button"
+                title="Dupliquer (Ctrl/⌘+D)"
+                onClick={() => act(() => editor.duplicate())}
+              >
+                Dupliquer
+              </button>
+              <button
+                type="button"
+                title="Grouper (Ctrl/⌘+G)"
+                disabled={!editor.canGroup}
+                onClick={() => act(() => editor.group())}
+              >
+                Grouper
+              </button>
+              <button
+                type="button"
+                title="Dégrouper (Ctrl/⌘+Maj+G)"
+                disabled={!editor.canUngroup}
+                onClick={() => act(() => editor.ungroup())}
+              >
+                Dégrouper
+              </button>
+              <button
+                type="button"
+                title="Premier plan (Ctrl/⌘+])"
+                onClick={() => act(() => editor.bringToFront())}
+              >
+                Premier plan
+              </button>
+              <button
+                type="button"
+                title="Arrière-plan (Ctrl/⌘+[)"
+                onClick={() => act(() => editor.sendToBack())}
+              >
+                Arrière-plan
+              </button>
+            </>
+          )}
+        </div>
+      )}
       {fields.has('stroke') && (
         <Row label={objects.some(({ type }) => type === 'text') ? 'Couleur' : 'Trait'}>
           <Swatches colors={COLORS} value={values.stroke} onPick={(stroke) => apply({ stroke })} />

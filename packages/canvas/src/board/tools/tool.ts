@@ -15,7 +15,9 @@ export type ToolName =
   | 'arrow'
   | 'pen'
   | 'highlighter'
-  | 'eraser';
+  | 'eraser'
+  | 'frame'
+  | 'lasso';
 
 /** Point d'un geste, en coordonnées monde. */
 export type ToolPoint = Point & { pressure: number; time: number };

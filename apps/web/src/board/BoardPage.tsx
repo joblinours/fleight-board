@@ -24,6 +24,7 @@ const REJECTION_MESSAGES: Record<string, string> = {
 
 const TOOLS: Array<{ name: ToolName; label: string; key: string }> = [
   { name: 'select', label: 'Sélection', key: 'V' },
+  { name: 'lasso', label: 'Lasso', key: 'Q' },
   { name: 'rectangle', label: 'Rectangle', key: 'R' },
   { name: 'ellipse', label: 'Ellipse', key: 'O' },
   { name: 'polygon', label: 'Polygone', key: 'G' },
@@ -34,6 +35,7 @@ const TOOLS: Array<{ name: ToolName; label: string; key: string }> = [
   { name: 'pen', label: 'Stylo', key: 'P' },
   { name: 'highlighter', label: 'Surligneur', key: 'H' },
   { name: 'eraser', label: 'Gomme', key: 'E' },
+  { name: 'frame', label: 'Frame', key: 'F' },
 ];
 
 /** Whiteboard local (`board` absent) ou collaboratif. */
@@ -393,8 +395,9 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
       )}
 
       <p className="board-help">
-        Double-tap / double-clic sur une forme pour éditer son texte · Suppr pour supprimer · Échap
-        pour revenir à la sélection
+        Double-tap / double-clic sur une forme pour éditer son texte (ou le titre d’une frame) ·
+        Glisser dans le vide pour sélectionner · Suppr pour supprimer · Échap pour revenir à la
+        sélection
       </p>
     </div>
   );

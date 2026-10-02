@@ -89,6 +89,8 @@ export {
   EllipseSchema,
   type Endpoint,
   EndpointSchema,
+  type FrameObject,
+  FrameSchema,
   type ImageObject,
   ImageSchema,
   isBoxed,

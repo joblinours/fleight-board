@@ -1,12 +1,20 @@
 import {
   BoardDocument,
+  copyObjects,
   type DocumentOperation,
   deleteObjectsOperations,
+  expandGroups,
+  FRAME_TITLE_BAND,
+  groupOperations,
   hitTestObject,
   objectBox,
   type Point,
+  pasteOperations,
   type RevertResult,
   UndoHistory,
+  ungroupOperations,
+  withFrameContents,
+  zOrderOperations,
 } from '@fleight/document';
 import { type BoardObject, isShape } from '@fleight/protocol';
 import { createId } from '@fleight/shared';
@@ -20,6 +28,7 @@ import {
 } from '../input/input-router';
 import { CanvasRenderer, type Page, type ViewState } from '../renderer';
 import { Scene } from '../scene';
+import { parseObjects, serializeObjects } from './clipboard';
 import { HANDLE_SIZE_PX, HANDLES, handlePosition } from './handles';
 import { boardPainters, createBoardPainters, type ImageSource } from './painters';
 import type { BoardSceneItem } from './scene-items';
@@ -28,6 +37,8 @@ import { Selection } from './selection';
 import { measureText } from './text-metrics';
 import { ConnectorTool } from './tools/connector-tool';
 import { EraserTool } from './tools/eraser-tool';
+import { FrameTool } from './tools/frame-tool';
+import { LassoTool } from './tools/lasso-tool';
 import { PenTool } from './tools/pen-tool';
 import { PolygonTool } from './tools/polygon-tool';
 import { SelectTool } from './tools/select-tool';
@@ -38,6 +49,8 @@ import type { LockOwner, Tool, ToolContext, ToolName, ToolPoint, ToolStyle } fro
 /** Tolérance de contact à l'écran, en pixels, selon le pointeur. */
 const TOLERANCE_PX: Record<PointerKind, number> = { mouse: 4, pen: 6, touch: 12 };
 const SELECTION_COLOR = '#2563eb';
+/** Décalage de chaque collage ou duplication, en unités monde. */
+const PASTE_OFFSET = 24;
 
 /** Geste en cours : ses lots d'opérations sont regroupés côté collaboration. */
 export type GestureInfo = { id: string; final: boolean };
@@ -137,7 +150,11 @@ export class BoardEditor {
     pen: new PenTool('pen'),
     highlighter: new PenTool('highlighter'),
     eraser: new EraserTool(),
+    frame: new FrameTool(),
+    lasso: new LassoTool(),
   };
+  /** Dernière copie d'objets, et nombre de collages depuis (décalage croissant). */
+  #clipboard: { objects: BoardObject[]; pastes: number } | undefined;
   /** Réglage de propriétés en cours (curseur, couleur) : une seule action annulable. */
   #styleGesture:
     | { key: string; id: string; ids: string[]; timer: ReturnType<typeof setTimeout> }
@@ -327,6 +344,124 @@ export class BoardEditor {
     this.apply(deleteObjectsOperations(this.document, ids));
   }
 
+  /** Sélection modifiable : sans les objets modifiés par d'autres participants. */
+  #editableSelection(): string[] {
+    const locks = this.#options.locks;
+    return [...this.selection.ids].filter((id) => !locks?.lockedBy(id));
+  }
+
+  /**
+   * Copie la sélection, avec le contenu des frames sélectionnées. Retourne le
+   * texte à placer dans le presse-papiers système.
+   */
+  copySelection(): string | undefined {
+    const objects = copyObjects(
+      this.document,
+      withFrameContents(this.document, this.selection.ids),
+    );
+    if (!objects.length) return undefined;
+    this.#clipboard = { objects, pastes: 0 };
+    return serializeObjects(objects);
+  }
+
+  /** Copie puis supprime la sélection (sauf les objets modifiés par d'autres participants). */
+  cutSelection(): string | undefined {
+    const text = this.copySelection();
+    const clipboard = this.#clipboard;
+    if (!text || !clipboard) return text;
+    const locks = this.#options.locks;
+    const ids = clipboard.objects.map(({ id }) => id).filter((id) => !locks?.lockedBy(id));
+    this.apply(deleteObjectsOperations(this.document, ids));
+    // Coller après couper remet les objets à leur place.
+    clipboard.pastes = -1;
+    return text;
+  }
+
+  /** Une copie est disponible pour « Coller ». */
+  get canPaste(): boolean {
+    return this.#clipboard !== undefined;
+  }
+
+  /**
+   * Colle des objets : ceux d'un texte de presse-papiers (copiés depuis un autre
+   * board), sinon la dernière copie. Les copies sont décalées, sélectionnées et
+   * placées au-dessus de tout. Retourne `false` s'il n'y a rien à coller.
+   */
+  paste(text?: string): boolean {
+    let objects: BoardObject[] | undefined;
+    if (text !== undefined) {
+      objects = parseObjects(text);
+      if (!objects) return false;
+      // Même contenu que la copie interne : le décalage continue de croître.
+      if (!this.#clipboard || serializeObjects(this.#clipboard.objects) !== text) {
+        this.#clipboard = { objects, pastes: 0 };
+      }
+    }
+    const clipboard = this.#clipboard;
+    if (!clipboard?.objects.length) return false;
+    clipboard.pastes += 1;
+    this.#insertCopies(clipboard.objects, clipboard.pastes * PASTE_OFFSET);
+    return true;
+  }
+
+  /** Duplique la sélection, décalée. */
+  duplicate(): void {
+    const ids = withFrameContents(this.document, this.selection.ids);
+    const objects = copyObjects(this.document, ids);
+    if (objects.length) this.#insertCopies(objects, PASTE_OFFSET);
+  }
+
+  #insertCopies(objects: readonly BoardObject[], offset: number): void {
+    const { operations, ids } = pasteOperations(objects, {
+      createId,
+      offset,
+      zIndexStart: this.document.topZIndex() + 1,
+    });
+    this.setTool('select');
+    this.apply(operations);
+    this.selection.set(ids);
+  }
+
+  /** Les objets sélectionnés peuvent être groupés (au moins deux). */
+  get canGroup(): boolean {
+    return this.selection.size >= 2;
+  }
+
+  /** Au moins un objet sélectionné appartient à un groupe. */
+  get canUngroup(): boolean {
+    return this.selectedObjects().some(({ groupId }) => groupId !== undefined);
+  }
+
+  /** Groupe les objets sélectionnés : ils se sélectionnent et se déplacent ensemble. */
+  group(): void {
+    const ids = this.#editableSelection();
+    if (ids.length < 2) return;
+    this.apply(groupOperations(ids, createId()));
+  }
+
+  /** Défait les groupes des objets sélectionnés (ils restent sélectionnés). */
+  ungroup(): void {
+    this.apply(ungroupOperations(this.document, this.#editableSelection()));
+  }
+
+  /** Met la sélection (avec ses groupes) au premier plan. */
+  bringToFront(): void {
+    this.#reorder('front');
+  }
+
+  /** Met la sélection (avec ses groupes) à l'arrière-plan. */
+  sendToBack(): void {
+    this.#reorder('back');
+  }
+
+  #reorder(position: 'front' | 'back'): void {
+    const locks = this.#options.locks;
+    const ids = [...expandGroups(this.document, this.selection.ids)].filter(
+      (id) => !locks?.lockedBy(id),
+    );
+    this.apply(zOrderOperations(this.document, ids, position));
+  }
+
   /** Redessine l'interface (changement de verrous, de participants…). */
   refresh(): void {
     this.#overlayRenderer.requestRender();
@@ -480,6 +615,9 @@ export class BoardEditor {
       ]);
     } else if (isShape(object)) {
       if (value !== object.label) this.apply([{ kind: 'update', id, patch: { label: value } }]);
+    } else if (object.type === 'frame') {
+      const title = value.replace(/\s+/g, ' ').trim().slice(0, 200);
+      if (title && title !== object.title) this.apply([{ kind: 'update', id, patch: { title } }]);
     }
   }
 
@@ -518,6 +656,18 @@ export class BoardEditor {
         fontSize: 16 * zoom,
         text: object.label,
         align: 'center',
+      };
+    }
+    if (object.type === 'frame') {
+      // Bandeau du titre, en haut de la frame.
+      const origin = this.camera.worldToScreen(object);
+      return {
+        ...origin,
+        width: Math.max(object.width * zoom, 160),
+        height: FRAME_TITLE_BAND * zoom,
+        fontSize: 16 * zoom,
+        text: object.title,
+        align: 'left',
       };
     }
     return undefined;
@@ -695,12 +845,12 @@ export class BoardEditor {
     // Saisie de texte en cours : les raccourcis sont laissés au champ. Un curseur,
     // une case à cocher ou un sélecteur de couleur (panneau de propriétés) ne bloquent rien.
     const textInputs = new Set(['text', 'search', 'email', 'password', 'number', 'url', 'tel']);
-    const editing = (event: KeyboardEvent) => {
-      const target = event.target;
+    const editingTarget = (target: EventTarget | null) => {
       if (!(target instanceof HTMLElement)) return false;
       if (target.isContentEditable || target.tagName === 'TEXTAREA') return true;
       return target instanceof HTMLInputElement && textInputs.has(target.type);
     };
+    const editing = (event: KeyboardEvent) => editingTarget(event.target);
 
     const shortcuts: Record<string, ToolName> = {
       v: 'select',
@@ -714,6 +864,8 @@ export class BoardEditor {
       p: 'pen',
       h: 'highlighter',
       e: 'eraser',
+      f: 'frame',
+      q: 'lasso',
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -736,6 +888,25 @@ export class BoardEditor {
       } else if ((event.ctrlKey || event.metaKey) && key === 'a') {
         event.preventDefault();
         this.selectAll();
+      } else if ((event.ctrlKey || event.metaKey) && key === 'd') {
+        event.preventDefault();
+        this.duplicate();
+      } else if ((event.ctrlKey || event.metaKey) && key === 'g') {
+        event.preventDefault();
+        if (event.shiftKey) this.ungroup();
+        else this.group();
+      } else if (
+        (event.ctrlKey || event.metaKey) &&
+        (event.code === 'BracketRight' || key === ']')
+      ) {
+        event.preventDefault();
+        this.bringToFront();
+      } else if (
+        (event.ctrlKey || event.metaKey) &&
+        (event.code === 'BracketLeft' || key === '[')
+      ) {
+        event.preventDefault();
+        this.sendToBack();
       } else if (!event.ctrlKey && !event.metaKey && !event.altKey) {
         const tool = shortcuts[key];
         if (tool) this.setTool(tool);
@@ -744,11 +915,34 @@ export class BoardEditor {
     const onKeyUp = (event: KeyboardEvent) => {
       this.#modifiers.shift = event.shiftKey;
     };
+    // Copier, couper, coller : presse-papiers système (texte), donc aussi entre boards.
+    const onCopy = (event: ClipboardEvent) => {
+      if (editingTarget(event.target) || !this.selection.size) return;
+      const text = event.type === 'cut' ? this.cutSelection() : this.copySelection();
+      if (!text) return;
+      event.preventDefault();
+      event.clipboardData?.setData('text/plain', text);
+    };
+    const onPaste = (event: ClipboardEvent) => {
+      if (editingTarget(event.target) || this.router.isDrawing) return;
+      const data = event.clipboardData;
+      // Les fichiers (images) sont laissés à l'application.
+      if (data?.files.length) return;
+      const text = data?.getData('text/plain') ?? '';
+      // Un autre texte que des objets : la dernière copie interne n'est pas collée.
+      if (text ? this.paste(text) : this.paste()) event.preventDefault();
+    };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('copy', onCopy);
+    window.addEventListener('cut', onCopy);
+    window.addEventListener('paste', onPaste);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('copy', onCopy);
+      window.removeEventListener('cut', onCopy);
+      window.removeEventListener('paste', onPaste);
     };
   }
 }
@@ -799,6 +993,9 @@ export function stylePatch(object: BoardObject, change: StyleChange): Record<str
     case 'stroke':
       if (change.stroke !== undefined) patch.color = change.stroke;
       if (change.strokeWidth !== undefined) patch.size = Math.max(0.5, change.strokeWidth);
+      break;
+    case 'frame':
+      if (change.fill !== undefined) patch.fill = change.fill;
       break;
     case 'image':
       break;

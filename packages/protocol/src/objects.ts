@@ -14,6 +14,8 @@ const base = {
   zIndex: z.number().finite(),
   /** Opacité (1 si absente : objets créés avant M1.3). */
   opacity: opacity.optional(),
+  /** Groupe : les objets d'un même groupe se sélectionnent et se déplacent ensemble. */
+  groupId: ObjectIdSchema.optional(),
 };
 
 /** Objet occupant un rectangle (x, y = coin haut-gauche, en coordonnées monde). */
@@ -56,6 +58,17 @@ export const ImageSchema = z.object({
   type: z.literal('image'),
   ...boxed,
   assetId: z.string().min(1).max(64),
+});
+
+/**
+ * Frame : zone titrée qui contient les objets entièrement compris dans son cadre.
+ * Elle est dessinée sous son contenu et le déplace avec elle.
+ */
+export const FrameSchema = z.object({
+  type: z.literal('frame'),
+  ...boxed,
+  title: z.string().max(200),
+  fill: color,
 });
 
 export const TextSchema = z.object({
@@ -106,6 +119,7 @@ export const BoardObjectSchema = z.discriminatedUnion('type', [
   EllipseSchema,
   PolygonSchema,
   ImageSchema,
+  FrameSchema,
   TextSchema,
   StrokeSchema,
   ConnectorSchema,
@@ -115,6 +129,7 @@ export type RectangleObject = z.infer<typeof RectangleSchema>;
 export type EllipseObject = z.infer<typeof EllipseSchema>;
 export type PolygonObject = z.infer<typeof PolygonSchema>;
 export type ImageObject = z.infer<typeof ImageSchema>;
+export type FrameObject = z.infer<typeof FrameSchema>;
 export type TextObject = z.infer<typeof TextSchema>;
 export type StrokeObject = z.infer<typeof StrokeSchema>;
 export type ConnectorObject = z.infer<typeof ConnectorSchema>;
