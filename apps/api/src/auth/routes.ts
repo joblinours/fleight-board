@@ -11,6 +11,7 @@ import {
 } from '@fleight/protocol';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { type ZodType, z } from 'zod';
+import { AssetError } from '../assets/asset-service';
 import { BoardError } from '../boards/board-service';
 import type { AuditLogReader } from '../db/audit-log';
 import { AuthError, type AuthService, type Identity, type RequestMeta } from './auth-service';
@@ -200,6 +201,15 @@ export async function registerAuth(app: FastifyInstance, options: AuthRoutesOpti
 
   // Erreurs métier → réponses HTTP.
   app.setErrorHandler((err, request, reply) => {
+    if (err instanceof AssetError) {
+      const status = { UNSUPPORTED_IMAGE: 415, IMAGE_TOO_LARGE: 413, ASSET_NOT_FOUND: 404 }[
+        err.code
+      ];
+      return reply.code(status).send(error(err.code, err.message));
+    }
+    if ((err as { statusCode?: number }).statusCode === 413) {
+      return reply.code(413).send(error('FILE_TOO_LARGE', 'Fichier trop volumineux'));
+    }
     if (err instanceof BoardError) {
       const status = { BOARD_NOT_FOUND: 404, ID_TAKEN: 409, FORBIDDEN: 403 }[err.code];
       return reply.code(status).send(error(err.code, err.message));

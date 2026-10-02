@@ -1,9 +1,11 @@
 import { BoardEditor, type InputMode, type ToolName } from '@fleight/canvas';
 import { CollaborationClient, type ConnectionStatus } from '@fleight/collaboration';
-import type { BoardSummary, Participant } from '@fleight/protocol';
+import { AssetResponseSchema, type BoardSummary, type Participant } from '@fleight/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { refreshSession, useSession } from '../auth/session';
+import { createImageCache } from './image-cache';
 import { createLockService } from './lock-service';
+import { PropertiesPanel } from './PropertiesPanel';
 import { sampleDiagram } from './sample-diagram';
 import { CloseCodes, connectWebSocket } from './websocket-transport';
 
@@ -24,11 +26,15 @@ const TOOLS: Array<{ name: ToolName; label: string; key: string }> = [
   { name: 'select', label: 'Sélection', key: 'V' },
   { name: 'rectangle', label: 'Rectangle', key: 'R' },
   { name: 'ellipse', label: 'Ellipse', key: 'O' },
+  { name: 'polygon', label: 'Polygone', key: 'G' },
   { name: 'text', label: 'Texte', key: 'T' },
+  { name: 'line', label: 'Ligne', key: 'L' },
+  { name: 'arrow', label: 'Flèche', key: 'A' },
   { name: 'connector', label: 'Connecteur', key: 'C' },
   { name: 'pen', label: 'Stylo', key: 'P' },
+  { name: 'highlighter', label: 'Surligneur', key: 'H' },
+  { name: 'eraser', label: 'Gomme', key: 'E' },
 ];
-const COLORS = ['#1f2937', '#2563eb', '#dc2626', '#16a34a', '#f59e0b'];
 
 /** Whiteboard local (`board` absent) ou collaboratif. */
 export function BoardPage({ board }: { board?: BoardSummary }) {
@@ -47,7 +53,6 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
 
   const [tool, setTool] = useState<ToolName>('select');
   const [selectionSize, setSelectionSize] = useState(0);
-  const [color, setColor] = useState(COLORS[0] ?? '#000');
   const [mode, setMode] = useState<InputMode>('auto');
   const [editingId, setEditingId] = useState<string | null>(null);
   // Incrémenté à chaque changement de vue pour repositionner l'éditeur de texte.
@@ -103,6 +108,7 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
     const editor = new BoardEditor({
       sceneCanvas,
       overlayCanvas,
+      images: createImageCache(() => editorRef.current?.redraw()),
       ...(pageRef.current ? { page: pageRef.current } : {}),
       ...(client
         ? {
@@ -117,7 +123,11 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
         : {}),
       onEditText: setEditingId,
       onToolChange: setTool,
-      onSelectionChange: (ids) => setSelectionSize(ids.size),
+      onSelectionChange: (ids) => {
+        setSelectionSize(ids.size);
+        // Le panneau de propriétés suit la sélection, même de taille identique.
+        setViewVersion((version) => version + 1);
+      },
       onViewChange: () => setViewVersion((version) => version + 1),
       onHistoryChange: setHistory,
       onUndoSkipped: ({ applied, skipped, intent }) => {
@@ -161,10 +171,6 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
     if (editorRef.current) editorRef.current.inputMode = mode;
   }, [mode]);
 
-  useEffect(() => {
-    if (editorRef.current) editorRef.current.style.color = color;
-  }, [color]);
-
   // Focus de la zone de texte à l'ouverture de l'édition.
   useEffect(() => {
     if (!editingId) return;
@@ -187,11 +193,72 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
     editor.fitContent();
   };
 
+  /** Importe une image (bouton, glisser-déposer, coller) et l'ajoute au centre de la vue. */
+  const uploadImage = useCallback(
+    async (file: File) => {
+      const editor = editorRef.current;
+      if (!editor || !boardId) return;
+      if (!file.type.startsWith('image/')) {
+        setRejection('Seules les images (PNG, JPEG, GIF, WebP) peuvent être importées.');
+        return;
+      }
+      try {
+        const response = await fetch(`/api/boards/${boardId}/assets`, {
+          method: 'POST',
+          headers: { 'content-type': file.type },
+          body: file,
+        });
+        const data: unknown = await response.json().catch(() => undefined);
+        if (!response.ok) {
+          const message = (data as { message?: string } | undefined)?.message;
+          setRejection(`Import impossible : ${message ?? `erreur ${response.status}`}`);
+          return;
+        }
+        const { asset } = AssetResponseSchema.parse(data);
+        editor.insertImage({ assetId: asset.id, width: asset.width, height: asset.height });
+      } catch {
+        setRejection('Import impossible : API injoignable.');
+      }
+    },
+    [boardId],
+  );
+
+  // Coller une image depuis le presse-papiers.
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
+      const file = [...(event.clipboardData?.files ?? [])].find(({ type }) =>
+        type.startsWith('image/'),
+      );
+      if (file) {
+        event.preventDefault();
+        void uploadImage(file);
+      }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [uploadImage]);
+
   const frame = editingId ? editorRef.current?.textEditorFrame(editingId) : undefined;
   void viewVersion;
 
   return (
-    <div className="board" ref={containerRef}>
+    <div
+      className="board"
+      ref={containerRef}
+      role="application"
+      aria-label="Whiteboard"
+      onDragOver={(event) => {
+        if (boardId && event.dataTransfer.types.includes('Files')) event.preventDefault();
+      }}
+      onDrop={(event) => {
+        const file = event.dataTransfer.files[0];
+        if (!boardId || !file) return;
+        event.preventDefault();
+        void uploadImage(file);
+      }}
+    >
       <canvas ref={sceneCanvasRef} className="board-layer" />
       <canvas ref={overlayCanvasRef} className="board-layer" />
 
@@ -233,19 +300,20 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
             {label}
           </button>
         ))}
-        <span className="board-separator" />
-        <div className="board-colors">
-          {COLORS.map((value) => (
-            <button
-              key={value}
-              type="button"
-              aria-label={`Couleur ${value}`}
-              className={value === color ? 'selected' : ''}
-              style={{ background: value }}
-              onClick={() => setColor(value)}
+        {boardId && (
+          <label className="board-upload" title="Importer une image (ou glisser-déposer, coller)">
+            Image
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (file) void uploadImage(file);
+              }}
             />
-          ))}
-        </div>
+          </label>
+        )}
         <span className="board-separator" />
         <button
           type="button"
@@ -287,6 +355,8 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
         </select>
         <a href="#/">Accueil</a>
       </div>
+
+      <PropertiesPanel editor={editorRef.current} tool={tool} />
 
       {boardId && (
         <div className="board-session">

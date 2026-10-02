@@ -1,5 +1,8 @@
+import { join } from 'node:path';
 import { CollaborationHub } from '@fleight/collaboration';
 import { buildApp } from './app';
+import { AssetService } from './assets/asset-service';
+import { FilesystemBlobStorage } from './assets/blob-storage';
 import { AuthService } from './auth/auth-service';
 import { BoardService } from './boards/board-service';
 import { loadConfig } from './config';
@@ -46,6 +49,8 @@ const app = await buildApp({
   logger: { level: config.LOG_LEVEL },
   auth,
   boards: new BoardService(database.db),
+  assets: new AssetService(database.db, new FilesystemBlobStorage(join(config.DATA_DIR, 'blobs'))),
+  maxUploadBytes: config.MAX_UPLOAD_MB * 1024 * 1024,
   allowRegistration: config.ALLOW_REGISTRATION,
   trustProxy: config.TRUST_PROXY,
   audit: new PostgresAuditLog(database.db),

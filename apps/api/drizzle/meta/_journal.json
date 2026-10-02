@@ -36,6 +36,13 @@
       "when": 1790938263515,
       "tag": "0004_boards",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790941657481,
+      "tag": "0005_assets",
+      "breakpoints": true
     }
   ]
 }

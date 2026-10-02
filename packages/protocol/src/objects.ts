@@ -6,10 +6,14 @@ const color = z.string().min(1).max(32);
 
 export const ObjectIdSchema = z.string().min(1).max(64);
 
+const opacity = z.number().min(0).max(1);
+
 const base = {
   id: ObjectIdSchema,
   /** Ordre d'affichage : les valeurs hautes sont au-dessus. */
   zIndex: z.number().finite(),
+  /** Opacité (1 si absente : objets créés avant M1.3). */
+  opacity: opacity.optional(),
 };
 
 /** Objet occupant un rectangle (x, y = coin haut-gauche, en coordonnées monde). */
@@ -33,6 +37,27 @@ const shape = {
 export const RectangleSchema = z.object({ type: z.literal('rectangle'), ...shape });
 export const EllipseSchema = z.object({ type: z.literal('ellipse'), ...shape });
 
+/**
+ * Polygone : sommets en coordonnées normalisées (0 à 1) dans son cadre, ce qui
+ * rend le redimensionnement trivial. Paires aplaties [x0, y0, x1, y1…].
+ */
+export const PolygonSchema = z.object({
+  type: z.literal('polygon'),
+  ...shape,
+  points: z
+    .array(z.number().min(0).max(1))
+    .min(6)
+    .max(400)
+    .refine((points) => points.length % 2 === 0, 'Les sommets vont par paires [x, y]'),
+});
+
+/** Image importée : fichier stocké côté serveur (`assetId`), affiché dans son cadre. */
+export const ImageSchema = z.object({
+  type: z.literal('image'),
+  ...boxed,
+  assetId: z.string().min(1).max(64),
+});
+
 export const TextSchema = z.object({
   type: z.literal('text'),
   ...boxed,
@@ -52,7 +77,7 @@ export const StrokeSchema = z.object({
   color,
   /** Épaisseur de base, en unités monde. */
   size: z.number().finite().min(0.01).max(1000),
-  opacity: z.number().min(0).max(1),
+  opacity,
   simulatePressure: z.boolean(),
 });
 
@@ -79,6 +104,8 @@ export const ConnectorSchema = z.object({
 export const BoardObjectSchema = z.discriminatedUnion('type', [
   RectangleSchema,
   EllipseSchema,
+  PolygonSchema,
+  ImageSchema,
   TextSchema,
   StrokeSchema,
   ConnectorSchema,
@@ -86,6 +113,8 @@ export const BoardObjectSchema = z.discriminatedUnion('type', [
 
 export type RectangleObject = z.infer<typeof RectangleSchema>;
 export type EllipseObject = z.infer<typeof EllipseSchema>;
+export type PolygonObject = z.infer<typeof PolygonSchema>;
+export type ImageObject = z.infer<typeof ImageSchema>;
 export type TextObject = z.infer<typeof TextSchema>;
 export type StrokeObject = z.infer<typeof StrokeSchema>;
 export type ConnectorObject = z.infer<typeof ConnectorSchema>;
@@ -97,12 +126,12 @@ export type BoardObjectType = BoardObject['type'];
 /** Objets occupant un rectangle (tout sauf les connecteurs). */
 export type BoxedObject = Exclude<BoardObject, ConnectorObject>;
 /** Formes pouvant porter un label et recevoir des connecteurs dédiés. */
-export type ShapeObject = RectangleObject | EllipseObject;
+export type ShapeObject = RectangleObject | EllipseObject | PolygonObject;
 
 export function isBoxed(object: BoardObject): object is BoxedObject {
   return object.type !== 'connector';
 }
 
 export function isShape(object: BoardObject): object is ShapeObject {
-  return object.type === 'rectangle' || object.type === 'ellipse';
+  return object.type === 'rectangle' || object.type === 'ellipse' || object.type === 'polygon';
 }

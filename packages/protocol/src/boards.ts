@@ -93,3 +93,20 @@ export type BoardResponse = z.infer<typeof BoardResponseSchema>;
 
 export const BoardsResponseSchema = z.object({ boards: z.array(BoardSummarySchema) });
 export type BoardsResponse = z.infer<typeof BoardsResponseSchema>;
+
+/** Types d'images acceptés à l'import (SVG exclu : il peut contenir du script). */
+export const IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;
+export type ImageMimeType = (typeof IMAGE_MIME_TYPES)[number];
+
+/** Fichier importé dans un board. */
+export const AssetSchema = z.object({
+  id: z.string(),
+  mimeType: z.enum(IMAGE_MIME_TYPES),
+  size: z.number().int(),
+  width: z.number().int(),
+  height: z.number().int(),
+});
+export type Asset = z.infer<typeof AssetSchema>;
+
+export const AssetResponseSchema = z.object({ asset: AssetSchema });
+export type AssetResponse = z.infer<typeof AssetResponseSchema>;

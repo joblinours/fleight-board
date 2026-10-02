@@ -200,4 +200,20 @@ export const MILESTONES: Milestone[] = [
       'Un ancien lien de test (ex. board « test-m05 ») propose « Créer ce board ».',
     ],
   },
+  {
+    id: 'M1.3',
+    title: 'Objets complets',
+    summary: 'Ligne, flèche, polygone, images, surligneur, gomme et panneau de propriétés.',
+    href: '#/',
+    linkLabel: 'Ouvrir un de mes boards (ci-dessus)',
+    needsApi: true,
+    multiDevice: true,
+    steps: [
+      'Polygone : un appui par sommet, puis appui sur le premier sommet pour fermer.',
+      'Ligne et Flèche : glisser ; le panneau de gauche règle couleur, épaisseur, pointes et opacité.',
+      'Surligneur au Pencil, puis Gomme sur un trait : seul le trait touché disparaît.',
+      'Image : bouton « Image », glisser-déposer un fichier ou coller (Ctrl+V) ; l’iPad la voit aussi.',
+      'Sélectionner une forme : remplissage « aucun », épaisseur, opacité ; Ctrl+Z annule le réglage d’un coup.',
+    ],
+  },
 ];

@@ -18,7 +18,7 @@ export function createTestContext(
   const context: ToolContext = {
     document,
     selection,
-    style: { color: '#111', fill: '#fff', strokeWidth: 2, penSize: 4 },
+    style: { color: '#111', fill: '#fff', strokeWidth: 2, penSize: 4, opacity: 1 },
     zoom,
     modifiers: { shift: false },
     tolerance: () => 4 / zoom,

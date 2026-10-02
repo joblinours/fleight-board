@@ -7,3 +7,6 @@ coverage/
 .env.*
 !.env.example
 .DS_Store
+
+# Fichiers importés (BlobStorage sur disque, développement)
+apps/api/data/

@@ -1,13 +1,13 @@
-import type { BoardObject, Endpoint, ShapeObject } from '@fleight/protocol';
+import type { BoardObject, EllipseObject, Endpoint, RectangleObject } from '@fleight/protocol';
 
 const shape = (
-  type: ShapeObject['type'],
+  type: 'rectangle' | 'ellipse',
   id: string,
   x: number,
   y: number,
   label: string,
   fill: string,
-): ShapeObject => ({
+): RectangleObject | EllipseObject => ({
   type,
   id,
   zIndex: 0,

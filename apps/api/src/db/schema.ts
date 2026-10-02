@@ -4,6 +4,7 @@ import type {
   BoardAuditAction,
   BoardCanvas,
   BoardObject,
+  ImageMimeType,
   Operation,
 } from '@fleight/protocol';
 import {
@@ -178,5 +179,32 @@ export const sessions = pgTable(
     uniqueIndex('sessions_token_idx').on(table.tokenHash),
     index('sessions_previous_token_idx').on(table.previousTokenHash),
     index('sessions_user_idx').on(table.userId),
+  ],
+);
+
+/**
+ * Fichiers importés dans un board (images). Le contenu est dans le BlobStorage,
+ * sous son empreinte SHA-256 : deux imports identiques ne sont stockés qu'une fois.
+ */
+export const assets = pgTable(
+  'assets',
+  {
+    id: text('id').primaryKey(),
+    boardId: text('board_id')
+      .notNull()
+      .references(() => boards.id, { onDelete: 'cascade' }),
+    sha256: text('sha256').notNull(),
+    mimeType: text('mime_type').$type<ImageMimeType>().notNull(),
+    size: integer('size').notNull(),
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    uploadedBy: text('uploaded_by').references((): AnyPgColumn => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('assets_board_idx').on(table.boardId),
+    index('assets_sha_idx').on(table.sha256),
   ],
 );

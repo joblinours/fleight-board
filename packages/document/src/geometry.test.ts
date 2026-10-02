@@ -7,6 +7,7 @@ import {
   hitTestObject,
   nearestAnchor,
   objectBox,
+  polygonVertices,
 } from './geometry';
 import { connector, rectangle, stroke } from './test-fixtures';
 
@@ -91,5 +92,39 @@ describe('hitTestObject', () => {
     const s = stroke('s', [0, 0, 0.5, 50, 0, 0.5], 10, 10);
     expect(hitTestObject(document, s, { x: 35, y: 11 }, 1)).toBe(true);
     expect(hitTestObject(document, s, { x: 35, y: 40 }, 1)).toBe(false);
+  });
+});
+
+describe('polygones', () => {
+  const triangle = {
+    type: 'polygon' as const,
+    id: 'p',
+    zIndex: 0,
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 100,
+    points: [0.5, 0, 1, 1, 0, 1],
+    fill: '#fff',
+    stroke: '#000',
+    strokeWidth: 2,
+    label: '',
+  };
+
+  it('convertit les sommets normalisés en coordonnées monde', () => {
+    expect(polygonVertices({ ...triangle, x: 10, width: 200 })).toEqual([
+      { x: 110, y: 0 },
+      { x: 210, y: 100 },
+      { x: 10, y: 100 },
+    ]);
+  });
+
+  it('touche l’intérieur et les côtés, pas les coins vides du cadre', () => {
+    const document = new BoardDocument();
+    document.load([triangle]);
+    expect(hitTestObject(document, triangle, { x: 50, y: 70 }, 0)).toBe(true);
+    expect(hitTestObject(document, triangle, { x: 5, y: 5 }, 0)).toBe(false);
+    // Juste à côté du côté gauche, dans la tolérance.
+    expect(hitTestObject(document, triangle, { x: 22, y: 50 }, 3)).toBe(true);
   });
 });

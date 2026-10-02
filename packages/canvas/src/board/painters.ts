@@ -1,5 +1,5 @@
-import { arrowSize, type Point } from '@fleight/document';
-import type { ShapeObject, StrokeObject, TextObject } from '@fleight/protocol';
+import { arrowSize, type Point, polygonVertices } from '@fleight/document';
+import type { ImageObject, ShapeObject, StrokeObject, TextObject } from '@fleight/protocol';
 import { outlineToPath, strokeOutline } from '../ink/stroke';
 import type { ItemPainter } from '../renderer';
 import type { BoardSceneItem } from './scene-items';
@@ -8,11 +8,24 @@ export const FONT_FAMILY = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 export const LINE_HEIGHT = 1.25;
 export const LABEL_FONT_SIZE = 16;
 
+/** Images des objets `image`, chargées par l'application (cache, requêtes). */
+export type ImageSource = {
+  /** Image prête à dessiner, ou `undefined` tant qu'elle n'est pas chargée. */
+  get(assetId: string): CanvasImageSource | undefined;
+};
+
 const paintShape: ItemPainter<BoardSceneItem> = (ctx, { object }) => {
-  if (object.type !== 'rectangle' && object.type !== 'ellipse') return;
+  if (object.type !== 'rectangle' && object.type !== 'ellipse' && object.type !== 'polygon') {
+    return;
+  }
   ctx.beginPath();
   if (object.type === 'rectangle') {
     ctx.rect(object.x, object.y, object.width, object.height);
+  } else if (object.type === 'polygon') {
+    const [first, ...rest] = polygonVertices(object);
+    if (first) ctx.moveTo(first.x, first.y);
+    for (const vertex of rest) ctx.lineTo(vertex.x, vertex.y);
+    ctx.closePath();
   } else {
     ctx.ellipse(
       object.x + object.width / 2,
@@ -24,11 +37,14 @@ const paintShape: ItemPainter<BoardSceneItem> = (ctx, { object }) => {
       Math.PI * 2,
     );
   }
-  ctx.fillStyle = object.fill;
-  ctx.fill();
+  if (object.fill !== 'transparent') {
+    ctx.fillStyle = object.fill;
+    ctx.fill();
+  }
   if (object.strokeWidth > 0) {
     ctx.strokeStyle = object.stroke;
     ctx.lineWidth = object.strokeWidth;
+    ctx.lineJoin = 'round';
     ctx.stroke();
   }
   if (object.label) paintLabel(ctx, object);
@@ -85,7 +101,6 @@ const paintStrokeObject: ItemPainter<BoardSceneItem> = (ctx, { object }) => {
 function paintPath(ctx: CanvasRenderingContext2D, object: StrokeObject, path: Path2D) {
   ctx.save();
   ctx.translate(object.x, object.y);
-  ctx.globalAlpha = object.opacity;
   ctx.fillStyle = object.color;
   ctx.fill(path);
   ctx.restore();
@@ -123,10 +138,50 @@ export function paintArrowHead(
   ctx.fill();
 }
 
-export const boardPainters: Record<BoardSceneItem['kind'], ItemPainter<BoardSceneItem>> = {
-  rectangle: paintShape,
-  ellipse: paintShape,
-  text: paintText,
-  stroke: paintStrokeObject,
-  connector: paintConnector,
-};
+/** Image chargée, ou cadre d'attente tant qu'elle ne l'est pas. */
+function paintImage(ctx: CanvasRenderingContext2D, object: ImageObject, images?: ImageSource) {
+  const image = images?.get(object.assetId);
+  if (image) {
+    ctx.drawImage(image, object.x, object.y, object.width, object.height);
+    return;
+  }
+  ctx.fillStyle = 'rgba(148, 163, 184, 0.25)';
+  ctx.fillRect(object.x, object.y, object.width, object.height);
+  ctx.strokeStyle = 'rgba(100, 116, 139, 0.6)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(object.x, object.y, object.width, object.height);
+}
+
+/** Applique l'opacité de l'objet autour de son dessin. */
+function withOpacity(painter: ItemPainter<BoardSceneItem>): ItemPainter<BoardSceneItem> {
+  return (ctx, item, view) => {
+    const opacity = item.object.opacity ?? 1;
+    if (opacity >= 1) {
+      painter(ctx, item, view);
+      return;
+    }
+    ctx.save();
+    ctx.globalAlpha = opacity;
+    painter(ctx, item, view);
+    ctx.restore();
+  };
+}
+
+/** Fonctions de dessin des objets ; `images` fournit le contenu des objets `image`. */
+export function createBoardPainters(
+  images?: ImageSource,
+): Record<BoardSceneItem['kind'], ItemPainter<BoardSceneItem>> {
+  return {
+    rectangle: withOpacity(paintShape),
+    ellipse: withOpacity(paintShape),
+    polygon: withOpacity(paintShape),
+    image: withOpacity((ctx, { object }) => {
+      if (object.type === 'image') paintImage(ctx, object, images);
+    }),
+    text: withOpacity(paintText),
+    stroke: withOpacity(paintStrokeObject),
+    connector: withOpacity(paintConnector),
+  };
+}
+
+export const boardPainters = createBoardPainters();

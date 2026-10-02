@@ -4,6 +4,7 @@ import type {
   BoxedObject,
   ConnectorObject,
   Endpoint,
+  PolygonObject,
 } from '@fleight/protocol';
 import type { BoardDocument } from './document';
 
@@ -121,6 +122,8 @@ export function hitTestObject(
     }
     case 'stroke':
       return hitTestStroke(object, point, tolerance);
+    case 'polygon':
+      return hitTestPolygon(object, point, tolerance);
     default:
       return inBox(object, point, tolerance);
   }
@@ -146,6 +149,39 @@ function hitTestStroke(
     if (distanceToSegment(local, segment) <= reach) return true;
   }
   return false;
+}
+
+/** Sommets d'un polygone en coordonnées monde. */
+export function polygonVertices(object: PolygonObject): Point[] {
+  const vertices: Point[] = [];
+  for (let i = 0; i < object.points.length; i += 2) {
+    vertices.push({
+      x: object.x + (object.points[i] ?? 0) * object.width,
+      y: object.y + (object.points[i + 1] ?? 0) * object.height,
+    });
+  }
+  return vertices;
+}
+
+/** Intérieur (règle pair-impair) ou à moins de `tolerance` d'un côté. */
+function hitTestPolygon(object: PolygonObject, point: Point, tolerance: number): boolean {
+  if (!inBox(object, point, tolerance + object.strokeWidth)) return false;
+  const vertices = polygonVertices(object);
+  let inside = false;
+  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    const a = vertices[i] as Point;
+    const b = vertices[j] as Point;
+    if (
+      a.y > point.y !== b.y > point.y &&
+      point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x
+    ) {
+      inside = !inside;
+    }
+    if (distanceToSegment(point, { start: a, end: b }) <= tolerance + object.strokeWidth / 2) {
+      return true;
+    }
+  }
+  return inside;
 }
 
 function inBox(box: Box, point: Point, tolerance: number): boolean {

@@ -3,6 +3,8 @@ import { CollaborationHub, type HubLogger } from '@fleight/collaboration';
 import type { HealthResponse } from '@fleight/protocol';
 import { PROTOCOL_VERSION } from '@fleight/protocol';
 import Fastify, { type FastifyRequest, type FastifyServerOptions } from 'fastify';
+import type { AssetService } from './assets/asset-service';
+import { registerAssets } from './assets/routes';
 import type { AuthService, Identity } from './auth/auth-service';
 import { registerAuth, SESSION_COOKIE } from './auth/routes';
 import type { BoardService } from './boards/board-service';
@@ -24,6 +26,10 @@ export type AppOptions = {
   audit?: AuditLogReader;
   /** Whiteboards (routes `/boards`) ; requiert `auth`. */
   boards?: BoardService;
+  /** Images importées (routes `/boards/:id/assets`, `/assets/:id`) ; requiert `auth`. */
+  assets?: AssetService;
+  /** Taille maximale d'un fichier importé, en octets (10 Mio par défaut). */
+  maxUploadBytes?: number;
   /**
    * Identifie une connexion WebSocket. Par défaut : session (cookie) via `auth` ;
    * sans `auth` ni `identify`, toute connexion est refusée.
@@ -46,6 +52,8 @@ export async function buildApp({
   allowRegistration,
   audit,
   boards,
+  assets,
+  maxUploadBytes = 10 * 1024 * 1024,
   identify,
   trustProxy = false,
 }: AppOptions) {
@@ -87,6 +95,9 @@ export async function buildApp({
       await registerBoards(app, { boards, audit, requireUser: requireUser() });
       // Board supprimé : ses participants sont déconnectés.
       boards.onDeleted = (boardId) => collaboration.evict(boardId);
+    }
+    if (assets) {
+      await registerAssets(app, { assets, requireUser: requireUser(), maxBytes: maxUploadBytes });
     }
   }
 

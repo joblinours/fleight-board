@@ -103,3 +103,17 @@ describe('BoardDocument', () => {
     expect(document.topZIndex()).toBe(7);
   });
 });
+
+describe('propriétés facultatives', () => {
+  it('null retire une propriété ; l’inverse d’une propriété absente est null', () => {
+    const document = new BoardDocument();
+    document.apply([{ kind: 'create', object: rectangle('a') }]);
+    const [inverse] = document.apply([{ kind: 'update', id: 'a', patch: { opacity: 0.4 } }]);
+    expect(document.get('a')?.opacity).toBe(0.4);
+    expect(inverse).toEqual({ kind: 'update', id: 'a', patch: { opacity: null } });
+
+    document.apply(inverse ? [inverse] : []);
+    expect(document.get('a')).toEqual(rectangle('a'));
+    expect(document.get('a')).not.toHaveProperty('opacity');
+  });
+});
