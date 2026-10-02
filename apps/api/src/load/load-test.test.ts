@@ -19,7 +19,6 @@ describe('test de charge (WebSocket)', () => {
   beforeAll(async () => {
     if (url) {
       database = connectDatabase(url);
-      await database.migrate();
     }
     const db = database?.db;
     app = await buildApp({

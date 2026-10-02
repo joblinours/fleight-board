@@ -29,7 +29,6 @@ describe.skipIf(!url)('audit_logs', () => {
 
   beforeAll(async () => {
     database = connectDatabase(url as string);
-    await database.migrate();
     store = new PostgresBoardStore(database.db);
     audit = new PostgresAuditLog(database.db);
   });
