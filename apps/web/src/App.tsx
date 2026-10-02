@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AuditPage } from './audit/AuditPage';
 import { BenchPage } from './bench/BenchPage';
 import { BoardPage } from './board/BoardPage';
 import { HomePage } from './HomePage';
@@ -19,6 +20,8 @@ export function App() {
 
   const board = route.match(/^\/board\/([A-Za-z0-9_-]{1,64})$/);
   if (board?.[1]) return <BoardPage key={board[1]} boardId={board[1]} />;
+  const audit = route.match(/^\/audit\/([A-Za-z0-9_-]{1,64})$/);
+  if (audit?.[1]) return <AuditPage key={audit[1]} boardId={audit[1]} />;
 
   switch (route) {
     case '/bench':

@@ -1,4 +1,5 @@
 import type { BoardObject, Intent, Operation } from '@fleight/protocol';
+import { type AuditEntry, auditEntriesOf } from './audit';
 
 /** État persisté d'un board. */
 export type StoredBoard = {
@@ -13,6 +14,10 @@ export type JournalEntry = {
   seq: number;
   /** Connexion à l'origine (utilisateur à partir de M1.1). */
   actor: string;
+  /** Connexion à l'origine de l'entrée (audit). */
+  session?: string;
+  /** Nom affiché de l'auteur (audit, en attendant les comptes de M1.1). */
+  actorName?: string;
   gestureId?: string;
   /** Annulation ou rétablissement. */
   intent?: Intent;
@@ -30,6 +35,8 @@ export type BoardCommit = {
 /**
  * Stockage durable des boards. Les commits d'un même board arrivent dans
  * l'ordre de leur séquence et ne sont jamais concurrents entre eux.
+ * Chaque entrée du journal produit ses entrées d'audit dans le même commit
+ * (voir `auditEntriesOf`).
  */
 export type BoardStore = {
   load(boardId: string): Promise<StoredBoard | undefined>;
@@ -43,6 +50,7 @@ export class MemoryBoardStore implements BoardStore {
     { seq: number; objects: Map<string, { object: BoardObject; version: number }> }
   >();
   readonly journal = new Map<string, JournalEntry[]>();
+  readonly audit: AuditEntry[] = [];
 
   async load(boardId: string): Promise<StoredBoard | undefined> {
     const board = this.boards.get(boardId);
@@ -70,6 +78,7 @@ export class MemoryBoardStore implements BoardStore {
       const entries = this.journal.get(boardId) ?? [];
       entries.push(...structuredClone(commit.journal));
       this.journal.set(boardId, entries);
+      this.audit.push(...commit.journal.flatMap((entry) => auditEntriesOf(boardId, entry)));
     }
   }
 }

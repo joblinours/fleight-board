@@ -6,7 +6,14 @@ export {
   type ServerHello,
   ServerHelloSchema,
 } from './handshake';
-export { type HealthResponse, HealthResponseSchema } from './http';
+export {
+  type AuditLogResponse,
+  AuditLogResponseSchema,
+  type AuditRecord,
+  AuditRecordSchema,
+  type HealthResponse,
+  HealthResponseSchema,
+} from './http';
 export {
   type Anchor,
   AnchorSchema,

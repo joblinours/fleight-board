@@ -70,7 +70,7 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 | Verrouillage temporaire des objets en cours d'édition | 🧪 Prototypé (M0.7) |
 | Curseurs et présence (modes « Drawing only » / « Cursor visible ») | _(prévu)_ |
 | Undo/redo individuel (chacun n'annule que ses propres actions) | 🧪 Prototypé (M0.8) |
-| Audit log complet et non annulable | _(prévu)_ |
+| Audit log complet et non annulable | 🧪 Prototypé (M0.10) : une entrée par opération finale, annulations comprises |
 | Travail local temporaire pendant une coupure réseau, puis resynchronisation | 🧪 Prototypé (M0.9) |
 | Mode présentation (navigation, zoom et focus synchronisés) | _(prévu)_ |
 
@@ -161,7 +161,8 @@ Fleight Board utilise une approche **hybride à serveur autoritaire** :
 - les clients envoient des **opérations structurées** (`CREATE_OBJECT`, `UPDATE_OBJECT`, `DELETE_OBJECT`, …) ;
 - le serveur valide les permissions, applique, **versionne chaque objet**, journalise et diffuse ;
 - un objet en cours d'édition est **verrouillé** par son éditeur (pointer down → lock, pointer up → unlock, avec un timeout de sécurité) ;
-- l'état est persisté sous forme de **journal d'opérations + snapshots**.
+- l'état est persisté sous forme de **journal d'opérations + snapshots** ;
+- chaque opération finale (un tracé ou un déplacement complet, une annulation…) produit une entrée dans **`audit_logs`**, écrite dans la même transaction que le journal.
 
 ### Règles de résolution
 
@@ -318,6 +319,7 @@ TEST_DATABASE_URL=postgres://fleight:fleight@localhost:5432/fleight pnpm test
 |---|---|
 | `GET /health` | Liveness : le processus répond |
 | `GET /ready` | Readiness : PostgreSQL est joignable (`503` sinon) |
+| `GET /boards/:boardId/audit?limit=200` | Audit d'un board, du plus récent au plus ancien (ouvert en Phase 0 ; réservé au propriétaire et à l'admin à partir de M1.2) |
 | `WS /ws` | WebSocket ; le premier message doit être `HELLO` avec la version du protocole |
 
 ## Roadmap

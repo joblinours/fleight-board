@@ -120,6 +120,7 @@ export class CollaborationHub {
     let gesture: OpenGesture | undefined;
     /** Auteur journalisé : le client (stable à travers les reconnexions). */
     let actor = connectionId;
+    let actorName: string | undefined;
     // Les messages d'une connexion sont traités l'un après l'autre (le JOIN est asynchrone).
     let queue = Promise.resolve();
     if (disconnect) this.#disconnects.set(connectionId, disconnect);
@@ -130,6 +131,8 @@ export class CollaborationHub {
       const entry: JournalEntry = {
         seq: gesture.seq,
         actor,
+        session: connectionId,
+        ...(actorName ? { actorName } : {}),
         gestureId: gesture.id,
         operations: compactOperations(gesture.operations),
       };
@@ -171,6 +174,7 @@ export class CollaborationHub {
           );
           joined = { boardId: message.boardId, loaded, unsubscribe, clientId: message.clientId };
           actor = message.clientId;
+          actorName = message.name;
           send({
             type: 'JOINED',
             self: connectionId,
@@ -288,6 +292,8 @@ export class CollaborationHub {
             journal.push({
               seq: result.seq,
               actor,
+              session: connectionId,
+              ...(actorName ? { actorName } : {}),
               operations: message.operations,
               ...(message.intent ? { intent: message.intent } : {}),
             });

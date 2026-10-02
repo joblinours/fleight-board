@@ -1,3 +1,10 @@
+export {
+  type AuditAction,
+  type AuditActorType,
+  type AuditEntry,
+  type AuditMetadata,
+  auditEntriesOf,
+} from './audit';
 export { type ApplyResult, BoardRoom } from './board-room';
 export {
   CollaborationClient,

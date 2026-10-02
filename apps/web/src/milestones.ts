@@ -136,4 +136,19 @@ export const MILESTONES: Milestone[] = [
       'Le Switch garde le nom donné sur le PC (arrivé en premier) ; l’iPad affiche « 1 modification n’a pas pu être appliquée ».',
     ],
   },
+  {
+    id: 'M0.10',
+    title: 'Audit log',
+    summary: 'Chaque opération finale est tracée : auteur, action, objet, session, annulations.',
+    href: '#/audit/test-m10',
+    linkLabel: 'Audit de « test-m10 »',
+    needsApi: true,
+    steps: [
+      'Depuis la page d’audit, « Ouvrir le board » (sur le PC ou l’iPad), puis « Exemple ».',
+      'Déplacer le Router en un seul geste, tracer un trait au Stylo.',
+      'Page d’audit : une ligne par action — « Modification » du router (x, y · geste), « Création » d’un stroke.',
+      'Ctrl+Z puis Ctrl+Maj+Z (ou Annuler / Rétablir) : lignes marquées « annulation » puis « rétablissement ».',
+      'Survoler un auteur affiche son identifiant client et sa session.',
+    ],
+  },
 ];
