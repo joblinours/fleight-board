@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app';
 import { connectDatabase, type Database } from '../database';
 import { PostgresBoardStore } from '../db/board-store';
-import { identifyAnyone } from '../test-helpers';
+import { createTestBoard, identifyAnyone } from '../test-helpers';
 import { runLoad } from './load-test';
 
 /**
@@ -39,9 +39,11 @@ describe('test de charge (WebSocket)', () => {
 
   for (const users of [2, 5, 20, 50]) {
     it(`${users} utilisateurs convergent`, { timeout: 60_000 }, async () => {
+      const boardId = `load-${users}-${Date.now()}`;
+      if (database) await createTestBoard(database.db, boardId);
       const report = await runLoad({
         url: wsUrl,
-        boardId: `load-${users}-${Date.now()}`,
+        boardId,
         users,
         durationMs: 1500,
         thinkMs: 150,

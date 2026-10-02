@@ -1,15 +1,13 @@
 import { type HealthResponse, HealthResponseSchema, PROTOCOL_VERSION } from '@fleight/protocol';
-import { type FormEvent, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { logout, useSession } from './auth/session';
+import { BoardsSection } from './boards/BoardsSection';
 import { MILESTONES } from './milestones';
 
 type ApiState = { kind: 'loading' } | { kind: 'ok'; health: HealthResponse } | { kind: 'error' };
 
-const BOARD_ID = /^[A-Za-z0-9_-]{1,64}$/;
-
 export function HomePage() {
   const [api, setApi] = useState<ApiState>({ kind: 'loading' });
-  const [boardName, setBoardName] = useState('');
 
   useEffect(() => {
     const controller = new AbortController();
@@ -24,11 +22,6 @@ export function HomePage() {
       });
     return () => controller.abort();
   }, []);
-
-  const openBoard = (event: FormEvent) => {
-    event.preventDefault();
-    if (BOARD_ID.test(boardName)) window.location.hash = `#/board/${boardName}`;
-  };
 
   const apiReady = api.kind === 'ok' && api.health.status === 'ok';
 
@@ -49,21 +42,7 @@ export function HomePage() {
         </dd>
       </dl>
 
-      <form className="home-open" onSubmit={openBoard}>
-        <label htmlFor="board-name">Ouvrir un board collaboratif</label>
-        <div>
-          <input
-            id="board-name"
-            value={boardName}
-            placeholder="nom-du-board"
-            pattern="[A-Za-z0-9_\-]{1,64}"
-            onChange={(event) => setBoardName(event.target.value.trim())}
-          />
-          <button type="submit" disabled={!BOARD_ID.test(boardName)}>
-            Ouvrir
-          </button>
-        </div>
-      </form>
+      <HomeBoards />
 
       <h2>Tests par jalon</h2>
       <ol className="milestones">
@@ -116,4 +95,18 @@ function AccountBar() {
       </button>
     </p>
   );
+}
+
+/** Whiteboards de l'utilisateur connecté ; invitation à se connecter sinon. */
+function HomeBoards() {
+  const session = useSession();
+  if (session.status === 'authenticated') return <BoardsSection />;
+  if (session.status === 'anonymous') {
+    return (
+      <p className="home-login">
+        <a href="#/login">Connectez-vous</a> pour créer et rejoindre des whiteboards.
+      </p>
+    );
+  }
+  return null;
 }

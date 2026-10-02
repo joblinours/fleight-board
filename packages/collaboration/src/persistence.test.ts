@@ -213,3 +213,45 @@ describe('regroupement des enregistrements', () => {
     });
   });
 });
+
+describe('boards gérés par l’API', () => {
+  it('refuse de rejoindre un board absent du stockage', async () => {
+    const hub = new CollaborationHub({ requireExistingBoards: true });
+    const received: ServerSessionMessage[] = [];
+    const reasons: string[] = [];
+    hub
+      .open(
+        'alice',
+        (message) => received.push(message),
+        (reason) => reasons.push(reason),
+      )
+      .receive({ type: 'JOIN', boardId: 'inconnu', name: 'Alice', clientId: 'alice' });
+    await drain(hub);
+
+    expect(reasons).toEqual(['board-not-found']);
+    expect(received).toEqual([]);
+    expect(hub.roomCount).toBe(0);
+  });
+
+  it('un board supprimé est déchargé et ses participants déconnectés', async () => {
+    const store = new MemoryBoardStore();
+    await store.commit('b', { seq: 0, upserts: [], deletes: [], journal: [] });
+    const hub = new CollaborationHub({ store, requireExistingBoards: true });
+    const reasons: string[] = [];
+    for (const name of ['alice', 'bob']) {
+      hub
+        .open(
+          name,
+          () => {},
+          (reason) => reasons.push(`${name}:${reason}`),
+        )
+        .receive({ type: 'JOIN', boardId: 'b', name, clientId: name });
+    }
+    await drain(hub);
+    expect(hub.roomCount).toBe(1);
+
+    hub.evict('b');
+    expect(reasons.sort()).toEqual(['alice:board-deleted', 'bob:board-deleted']);
+    expect(hub.roomCount).toBe(0);
+  });
+});

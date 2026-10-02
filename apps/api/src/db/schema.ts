@@ -1,6 +1,13 @@
 import type { AuditAction, AuditActorType } from '@fleight/collaboration';
-import type { AccountAuditAction, BoardObject, Operation } from '@fleight/protocol';
+import type {
+  AccountAuditAction,
+  BoardAuditAction,
+  BoardCanvas,
+  BoardObject,
+  Operation,
+} from '@fleight/protocol';
 import {
+  type AnyPgColumn,
   bigint,
   bigserial,
   boolean,
@@ -14,13 +21,29 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
-export const boards = pgTable('boards', {
-  id: text('id').primaryKey(),
-  /** Séquence du dernier lot appliqué. */
-  seq: bigint('seq', { mode: 'number' }).notNull().default(0),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const boards = pgTable(
+  'boards',
+  {
+    id: text('id').primaryKey(),
+    /** Code court pour rejoindre le board (6 caractères, voir `BOARD_CODE_ALPHABET`). */
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    canvas: jsonb('canvas').$type<BoardCanvas>().notNull().default({ kind: 'infinite' }),
+    /** Propriétaire ; absent si son compte a été supprimé (le board est conservé). */
+    ownerId: text('owner_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
+    /** Masqué de la liste de son propriétaire. */
+    hidden: boolean('hidden').notNull().default(false),
+    /** Séquence du dernier lot appliqué. */
+    seq: bigint('seq', { mode: 'number' }).notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('boards_code_idx').on(table.code),
+    index('boards_owner_idx').on(table.ownerId),
+  ],
+);
 
 /** État courant des objets : un board se charge sans rejouer le journal. */
 export const objects = pgTable(
@@ -83,7 +106,7 @@ export const auditLogs = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     actor: text('actor').notNull(),
     actorType: text('actor_type').$type<AuditActorType>().notNull(),
-    action: text('action').$type<AuditAction | AccountAuditAction>().notNull(),
+    action: text('action').$type<AuditAction | AccountAuditAction | BoardAuditAction>().notNull(),
     /** Absent pour les événements de compte (connexion, administration). */
     boardId: text('board_id'),
     objectId: text('object_id'),

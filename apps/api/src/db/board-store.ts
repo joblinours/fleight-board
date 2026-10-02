@@ -35,20 +35,20 @@ export class PostgresBoardStore implements BoardStore {
 
   async commit(boardId: string, commit: BoardCommit): Promise<void> {
     await this.#db.transaction(async (tx) => {
+      // Le board doit exister (créé par l'API) : un commit arrivé après sa suppression
+      // échoue, le board est déchargé et ses participants déconnectés.
       const [previous] = await tx
         .select({ seq: boards.seq })
         .from(boards)
         .where(eq(boards.id, boardId))
         .for('update');
-      const previousSeq = previous?.seq ?? 0;
+      if (!previous) throw new Error(`Board ${boardId} introuvable`);
+      const previousSeq = previous.seq;
 
       await tx
-        .insert(boards)
-        .values({ id: boardId, seq: commit.seq })
-        .onConflictDoUpdate({
-          target: boards.id,
-          set: { seq: sql`greatest(${boards.seq}, ${commit.seq})`, updatedAt: sql`now()` },
-        });
+        .update(boards)
+        .set({ seq: sql`greatest(${boards.seq}, ${commit.seq})`, updatedAt: sql`now()` })
+        .where(eq(boards.id, boardId));
 
       if (commit.upserts.length) {
         await tx

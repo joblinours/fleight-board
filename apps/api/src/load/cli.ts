@@ -27,11 +27,13 @@ if (!values.user || !values.password) {
   process.exit(1);
 }
 const headers = { cookie: await login(values.url, values.user, values.password) };
+const httpUrl = values.url.replace(/^ws/, 'http');
 
 const reports: LoadReport[] = [];
 for (const users of values.users.split(',').map(Number)) {
   const boardId = values.board ?? `load-${users}-${Date.now()}`;
   console.log(`→ ${users} utilisateurs, ${values.duration} s, board « ${boardId} »…`);
+  await ensureBoard(httpUrl, headers.cookie, boardId);
   const report = await runLoad({
     url: values.url,
     boardId,
@@ -84,4 +86,16 @@ async function login(wsUrl: string, identifier: string, password: string): Promi
   const cookie = response.headers.get('set-cookie')?.split(';')[0];
   if (!cookie) throw new Error('Cookie de session absent');
   return cookie;
+}
+
+/** Crée le board s'il n'existe pas encore (les boards sont créés par l'API). */
+async function ensureBoard(httpUrl: string, cookie: string, boardId: string): Promise<void> {
+  const existing = await fetch(new URL(`/boards/${boardId}`, httpUrl), { headers: { cookie } });
+  if (existing.ok) return;
+  const created = await fetch(new URL('/boards', httpUrl), {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ id: boardId, name: `Test de charge ${boardId}` }),
+  });
+  if (!created.ok) throw new Error(`Création du board refusée (${created.status})`);
 }

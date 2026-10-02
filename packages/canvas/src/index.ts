@@ -52,6 +52,7 @@ export {
   type GridOptions,
   gridSpacing,
   type ItemPainter,
+  type Page,
   type RendererOptions,
   type RenderStats,
   type ViewState,

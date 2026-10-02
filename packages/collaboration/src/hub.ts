@@ -43,9 +43,17 @@ type LoadedRoom = {
    * qu'un enregistrement est en cours partent ensemble, en une transaction.
    */
   nextGroup: CommitGroup | undefined;
-  /** Le stockage a échoué : le board doit être rechargé. */
+  /** Le stockage a échoué ou le board a été supprimé : il doit être rechargé. */
   broken: boolean;
+  /** Le board n'existe pas dans le stockage. */
+  missing: boolean;
 };
+
+/**
+ * Raison pour laquelle le serveur ferme une connexion : échec d'enregistrement
+ * (le client se reconnecte), board inexistant ou supprimé (inutile de revenir).
+ */
+export type DisconnectReason = 'storage' | 'board-not-found' | 'board-deleted';
 
 type CommitGroup = Array<{ commit: BoardCommit; then: (() => void) | undefined }>;
 
@@ -67,7 +75,8 @@ export class CollaborationHub {
   readonly #pubsub: PubSub<Broadcast>;
   readonly #store: BoardStore;
   readonly #log: HubLogger | undefined;
-  readonly #disconnects = new Map<string, () => void>();
+  readonly #disconnects = new Map<string, (reason: DisconnectReason) => void>();
+  readonly #requireExistingBoards: boolean;
   readonly #lockOptions: { ttlMs?: number; now?: () => number };
 
   constructor(
@@ -79,8 +88,14 @@ export class CollaborationHub {
       lockTtlMs?: number;
       /** Horloge, injectable pour les tests. */
       now?: () => number;
+      /**
+       * Refuse de rejoindre un board absent du stockage (créé par l'API) ; sinon
+       * il est créé à la première modification (tests, développement sans base).
+       */
+      requireExistingBoards?: boolean;
     } = {},
   ) {
+    this.#requireExistingBoards = options.requireExistingBoards ?? false;
     this.#pubsub = options.pubsub ?? new InMemoryPubSub<Broadcast>();
     this.#store = options.store ?? new MemoryBoardStore();
     this.#log = options.log;
@@ -99,6 +114,20 @@ export class CollaborationHub {
       const loaded = await loading;
       const expired = loaded.locks.expire();
       if (expired.length) this.#broadcastLocks(boardId, loaded, {}, expired);
+    }
+  }
+
+  /**
+   * Board supprimé : il est déchargé, ses enregistrements en attente abandonnés,
+   * et ses participants déconnectés.
+   */
+  evict(boardId: string): void {
+    const loaded = this.#loaded.get(boardId);
+    if (!loaded) return;
+    loaded.broken = true;
+    this.#unload(boardId, loaded);
+    for (const connectionId of loaded.participants.keys()) {
+      this.#disconnects.get(connectionId)?.('board-deleted');
     }
   }
 
@@ -125,7 +154,7 @@ export class CollaborationHub {
   open(
     connectionId: string,
     send: (message: ServerSessionMessage) => void,
-    disconnect?: () => void,
+    disconnect?: (reason: DisconnectReason) => void,
     /** Utilisateur authentifié : auteur journalisé et nom affiché aux autres participants. */
     user?: { id: string; name: string },
   ): HubConnection {
@@ -181,6 +210,11 @@ export class CollaborationHub {
         case 'JOIN': {
           leave();
           const loaded = await this.#join(message.boardId);
+          if (loaded.missing && this.#requireExistingBoards) {
+            this.#evictIfEmpty(message.boardId, loaded);
+            disconnect?.('board-not-found');
+            return;
+          }
           const participant = { connectionId, name: user?.name ?? message.name };
           loaded.participants.set(connectionId, participant);
           const unsubscribe = this.#pubsub.subscribe(
@@ -366,7 +400,7 @@ export class CollaborationHub {
           .then(() => handle(parsed.data))
           .catch((error: unknown) => {
             this.#log?.error({ connectionId, error: String(error) }, 'échec du traitement');
-            disconnect?.();
+            disconnect?.('storage');
           });
       },
       close: () => {
@@ -400,6 +434,7 @@ export class CollaborationHub {
           persistence: Promise.resolve(),
           nextGroup: undefined,
           broken: false,
+          missing: stored === undefined,
         };
         if (this.#rooms.get(boardId) === promise) this.#loaded.set(boardId, loaded);
         return loaded;
@@ -469,7 +504,9 @@ export class CollaborationHub {
     loaded.broken = true;
     this.#log?.error({ boardId, error: String(error) }, 'échec de l’enregistrement du board');
     this.#unload(boardId, loaded);
-    for (const connectionId of loaded.participants.keys()) this.#disconnects.get(connectionId)?.();
+    for (const connectionId of loaded.participants.keys()) {
+      this.#disconnects.get(connectionId)?.('storage');
+    }
   }
 
   /** Décharge un board sans participant une fois ses enregistrements terminés. */

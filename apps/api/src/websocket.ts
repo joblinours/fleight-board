@@ -15,6 +15,10 @@ export const CloseCode = {
   InvalidMessage: 4400,
   /** Session révoquée (compte désactivé, supprimé, mot de passe réinitialisé). */
   Revoked: 4401,
+  /** Board inexistant. */
+  BoardNotFound: 4404,
+  /** Board supprimé pendant la session. */
+  BoardDeleted: 4410,
   UnsupportedProtocolVersion: 4426,
   ServerError: 4500,
 } as const;
@@ -56,13 +60,28 @@ export async function registerWebSocket(
       const connectionId = createId();
       const log = request.log.child({ connectionId, userId: identity.userId });
       let greeted = false;
+      const fail = (error: ServerError, closeCode: number) => {
+        socket.send(JSON.stringify(error));
+        socket.close(closeCode, error.code);
+      };
       const session = hub.open(
         connectionId,
         (message) => {
           if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
         },
-        // Échec d'enregistrement : le client se reconnectera et rechargera l'état.
-        () => socket.close(CloseCode.ServerError, 'STORAGE_ERROR'),
+        (reason) => {
+          if (reason === 'board-not-found') {
+            fail(
+              { type: 'ERROR', code: 'BOARD_NOT_FOUND', message: 'Board introuvable' },
+              CloseCode.BoardNotFound,
+            );
+          } else if (reason === 'board-deleted') {
+            socket.close(CloseCode.BoardDeleted, 'BOARD_DELETED');
+          } else {
+            // Échec d'enregistrement : le client se reconnectera et rechargera l'état.
+            socket.close(CloseCode.ServerError, 'STORAGE_ERROR');
+          }
+        },
         { id: identity.userId, name: identity.displayName },
       );
       const sockets = byUser.get(identity.userId) ?? new Set<WebSocket>();
@@ -74,11 +93,6 @@ export async function registerWebSocket(
         if (!sockets.size && byUser.get(identity.userId) === sockets)
           byUser.delete(identity.userId);
       });
-
-      const fail = (error: ServerError, closeCode: number) => {
-        socket.send(JSON.stringify(error));
-        socket.close(closeCode, error.code);
-      };
 
       socket.on('message', (raw) => {
         let data: unknown;

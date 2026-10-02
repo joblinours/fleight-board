@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type WebSocket from 'ws';
 import { buildApp } from '../app';
 import { connectDatabase, type Database } from '../database';
-import { identifyAnyone } from '../test-helpers';
+import { createTestBoard, identifyAnyone } from '../test-helpers';
 import { PostgresBoardStore, SNAPSHOT_INTERVAL } from './board-store';
 import { operations, snapshots } from './schema';
 
@@ -49,6 +49,7 @@ describe.skipIf(!url)('PostgresBoardStore', () => {
 
   it('enregistre et recharge l’état courant, les versions et le journal', async () => {
     const boardId = `test-${createId()}`;
+    await createTestBoard(database.db, boardId);
     await store.commit(boardId, {
       seq: 1,
       upserts: [
@@ -100,6 +101,7 @@ describe.skipIf(!url)('PostgresBoardStore', () => {
 
   it('conserve une copie complète à chaque palier de séquence', async () => {
     const boardId = `test-${createId()}`;
+    await createTestBoard(database.db, boardId);
     await store.commit(boardId, {
       seq: SNAPSHOT_INTERVAL - 1,
       upserts: [{ object: rectangle('a'), version: 1 }],
@@ -121,6 +123,7 @@ describe.skipIf(!url)('PostgresBoardStore', () => {
 
   it('ne perd rien quand l’API redémarre', async () => {
     const boardId = `restart-${createId()}`;
+    await createTestBoard(database.db, boardId);
 
     const start = () =>
       buildApp({

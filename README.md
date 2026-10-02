@@ -53,7 +53,8 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 
 | Fonctionnalité | Statut |
 |---|---|
-| Canvas standard (A4, A3, A2, 16:9, 4:3, personnalisé) | _(prévu)_ |
+| Whiteboards : création (nom, description, format), liste, renommage, masquage, suppression | 🧪 Implémenté (M1.2) |
+| Canvas standard (A4, A3, A2, 16:9, 4:3, personnalisé) | 🧪 Page de taille fixe, portrait ou paysage (M1.2) |
 | Canvas infini (zoom, pan) | 🧪 Moteur de rendu prototypé (M0.2) |
 | Primitives : rectangle, ellipse, ligne, flèche, polygone, texte, image | 🧪 Rectangle, ellipse et texte prototypés (M0.4) |
 | Dessin libre : stylo, surligneur, gomme, couleur, épaisseur, opacité | 🧪 Stylo à pression prototypé (M0.3) |
@@ -202,7 +203,7 @@ Un membre peut recevoir un accès **permanent**, **temporaire** (durée définie
 
 ## Partage
 
-- **Code court** de 6 caractères (ex. `K7P4X2`), sans caractères ambigus (`O/0`, `I/1`, `S/5`). C'est un identifiant, pas un secret : il est protégé par du rate limiting et de la détection d'abus.
+- **Code court** de 6 caractères (ex. `K7P4X2`), sans caractères ambigus (`O/0`, `I/1`, `S/5`). C'est un identifiant, pas un secret : il est protégé par du rate limiting et de la détection d'abus. _(Code et « Rejoindre un board » implémentés en M1.2 ; sessions publiques/privées en M1.8.)_
 - **Session publique** : toute personne connaissant le code peut rejoindre.
 - **Session privée** : chaque demande de connexion doit être acceptée.
 - **Share links** Viewer ou Editor, à jetons aléatoires longs, révocables et éventuellement temporaires.
@@ -345,7 +346,10 @@ Variables d'environnement (`apps/api/.env`, modèle : `apps/api/.env.example`) :
 | `PATCH`, `DELETE /admin/users/:id` | Admin : nom, e-mail, rôle, activation / validation, suppression |
 | `POST /admin/users/:id/reset-password` | Admin : mot de passe temporaire, sessions fermées |
 | `GET /admin/audit?limit=200` | Admin : événements de compte (connexions, administration) |
-| `GET /boards/:boardId/audit?limit=200` | Audit d'un board, du plus récent au plus ancien (Admin ; propriétaire du board à partir de M1.2) |
+| `GET`, `POST /boards` | Ses whiteboards (`?hidden=true` : avec les masqués) ; création (nom, description, canvas infini ou standard) |
+| `GET /boards/code/:code` | Board correspondant à un code court (rate limiting par IP) |
+| `GET`, `PATCH`, `DELETE /boards/:id` | Détails ; renommage, description, masquage, suppression immédiate (propriétaire) |
+| `GET /boards/:id/audit?limit=200` | Audit d'un board, du plus récent au plus ancien (propriétaire du board, Admin) |
 | `WS /ws` | WebSocket, session requise ; le premier message doit être `HELLO` avec la version du protocole |
 
 ## Roadmap
