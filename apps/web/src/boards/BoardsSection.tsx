@@ -1,3 +1,4 @@
+import { can, ROLE_LABELS } from '@fleight/permissions';
 import {
   type BoardCanvas,
   BoardCodeSchema,
@@ -67,7 +68,7 @@ export function BoardsSection() {
       <CreateBoard />
 
       <div className="boards-head">
-        <h2>Mes whiteboards</h2>
+        <h2>Mes whiteboards et boards partagés</h2>
         <label>
           <input
             type="checkbox"
@@ -156,18 +157,32 @@ function BoardCard({
       <p className="boards-meta">
         {canvasLabel(board.canvas)} · modifié le {new Date(board.updatedAt).toLocaleString()}
         {board.hidden && ' · masqué'}
+        {board.role && board.role !== 'owner' && (
+          <>
+            {' · '}
+            <span className="boards-shared">
+              partagé par {board.ownerName ?? 'un compte supprimé'} · {ROLE_LABELS[board.role]}
+            </span>
+          </>
+        )}
       </p>
       <div className="boards-actions">
         <a href={`#/board/${board.id}`}>Ouvrir</a>
-        <button type="button" onClick={() => setEditing(!editing)}>
-          Renommer
-        </button>
-        <button type="button" onClick={onToggleHidden}>
-          {board.hidden ? 'Réafficher' : 'Masquer'}
-        </button>
-        <button type="button" className="danger" onClick={onDelete}>
-          Supprimer
-        </button>
+        {can(board.role, 'board.settings') && (
+          <>
+            <button type="button" onClick={() => setEditing(!editing)}>
+              Renommer
+            </button>
+            <button type="button" onClick={onToggleHidden}>
+              {board.hidden ? 'Réafficher' : 'Masquer'}
+            </button>
+          </>
+        )}
+        {can(board.role, 'board.delete') && (
+          <button type="button" className="danger" onClick={onDelete}>
+            Supprimer
+          </button>
+        )}
       </div>
     </li>
   );

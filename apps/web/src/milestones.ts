@@ -267,4 +267,21 @@ export const MILESTONES: Milestone[] = [
       'Un objet en cours de modification est encadré à la couleur de son auteur.',
     ],
   },
+  {
+    id: 'M1.7',
+    title: 'Permissions',
+    summary:
+      'Rôles Viewer < Editor < Presenter < Co-owner < Owner, gestion des membres, vérification serveur.',
+    href: '#/',
+    linkLabel: 'Ouvrir un de mes boards (ci-dessus)',
+    needsApi: true,
+    multiDevice: true,
+    steps: [
+      'Créer un second compte (page Admin), puis dans un board : « Membres » → ajouter ce compte en Viewer.',
+      'Régler « Accès des autres utilisateurs » sur « Membres seulement ».',
+      'Avec le second compte : le board apparaît dans sa liste (« partagé ») ; il s’ouvre en lecture seule.',
+      'Le passer en Editor : ses outils apparaissent aussitôt, sans recharger.',
+      'Le retirer : sa session se ferme (« plus accès ») ; un compte tiers ne peut pas ouvrir le board.',
+    ],
+  },
 ];

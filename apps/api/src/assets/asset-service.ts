@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { Asset } from '@fleight/protocol';
+import { can } from '@fleight/permissions';
+import type { Asset, BoardRole } from '@fleight/protocol';
 import { createId } from '@fleight/shared';
 import { eq } from 'drizzle-orm';
 import type { Identity } from '../auth/auth-service';
@@ -26,6 +27,12 @@ export class AssetService {
   readonly #db: Db;
   readonly #storage: BlobStorage;
 
+  /**
+   * Rôle d'un utilisateur sur un board (branché par l'application) ; sans cette
+   * fonction, tout utilisateur connecté peut importer.
+   */
+  roleOf: ((userId: string, boardId: string) => Promise<BoardRole | undefined>) | undefined;
+
   constructor(db: Db, storage: BlobStorage) {
     this.#db = db;
     this.#storage = storage;
@@ -38,6 +45,9 @@ export class AssetService {
       .from(boards)
       .where(eq(boards.id, boardId));
     if (!board) throw new BoardError('BOARD_NOT_FOUND', 'Board introuvable');
+    if (this.roleOf && !can(await this.roleOf(identity.userId, boardId), 'board.edit')) {
+      throw new BoardError('FORBIDDEN', 'Votre rôle ne permet pas d’importer dans ce board');
+    }
 
     const info = readImageInfo(data);
     if (!info || info.width < 1 || info.height < 1) {

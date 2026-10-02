@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BoardRoleSchema, DefaultRoleSchema, MemberRoleSchema } from './roles';
 import { BoardIdSchema } from './session';
 
 /**
@@ -69,6 +70,10 @@ export const BoardSummarySchema = z.object({
   ownerName: z.string().nullable(),
   /** Masqué de la liste de son propriétaire. */
   hidden: z.boolean(),
+  /** Accès des utilisateurs non membres. */
+  defaultRole: DefaultRoleSchema,
+  /** Rôle de l'utilisateur qui fait la requête (`null` : aucun accès). */
+  role: BoardRoleSchema.nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -84,7 +89,12 @@ export const CreateBoardRequestSchema = z.object({
 export type CreateBoardRequest = z.input<typeof CreateBoardRequestSchema>;
 
 export const UpdateBoardRequestSchema = z
-  .object({ name: BoardNameSchema, description: BoardDescriptionSchema, hidden: z.boolean() })
+  .object({
+    name: BoardNameSchema,
+    description: BoardDescriptionSchema,
+    hidden: z.boolean(),
+    defaultRole: DefaultRoleSchema,
+  })
   .partial();
 export type UpdateBoardRequest = z.infer<typeof UpdateBoardRequestSchema>;
 
@@ -93,6 +103,39 @@ export type BoardResponse = z.infer<typeof BoardResponseSchema>;
 
 export const BoardsResponseSchema = z.object({ boards: z.array(BoardSummarySchema) });
 export type BoardsResponse = z.infer<typeof BoardsResponseSchema>;
+
+/** Membre d'un board (hors propriétaire). */
+export const BoardMemberSchema = z.object({
+  userId: z.string(),
+  username: z.string(),
+  displayName: z.string(),
+  role: MemberRoleSchema,
+  createdAt: z.string(),
+});
+export type BoardMember = z.infer<typeof BoardMemberSchema>;
+
+export const BoardMembersResponseSchema = z.object({
+  owner: z.object({ userId: z.string(), username: z.string(), displayName: z.string() }).nullable(),
+  members: z.array(BoardMemberSchema),
+  defaultRole: DefaultRoleSchema,
+  /** Rôle de l'utilisateur qui fait la requête. */
+  role: BoardRoleSchema,
+});
+export type BoardMembersResponse = z.infer<typeof BoardMembersResponseSchema>;
+
+export const AddMemberRequestSchema = z.object({
+  /** Nom d'utilisateur ou e-mail du compte à ajouter. */
+  identifier: z.string().trim().min(1).max(254),
+  role: MemberRoleSchema,
+});
+export type AddMemberRequest = z.infer<typeof AddMemberRequestSchema>;
+
+export const UpdateMemberRequestSchema = z.object({ role: MemberRoleSchema });
+export type UpdateMemberRequest = z.infer<typeof UpdateMemberRequestSchema>;
+
+/** Transfert de propriété à un membre ; l'ancien propriétaire devient Co-owner. */
+export const TransferBoardRequestSchema = z.object({ userId: z.string().min(1) });
+export type TransferBoardRequest = z.infer<typeof TransferBoardRequestSchema>;
 
 /** Types d'images acceptés à l'import (SVG exclu : il peut contenir du script). */
 export const IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;

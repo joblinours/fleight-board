@@ -24,7 +24,15 @@ export const AccountAuditActionSchema = z.enum([
 export type AccountAuditAction = z.infer<typeof AccountAuditActionSchema>;
 
 /** Gestion des boards (création, modification, suppression). */
-export const BoardAuditActionSchema = z.enum(['board.create', 'board.update', 'board.delete']);
+export const BoardAuditActionSchema = z.enum([
+  'board.create',
+  'board.update',
+  'board.delete',
+  'board.transfer',
+  'board.member.add',
+  'board.member.update',
+  'board.member.remove',
+]);
 export type BoardAuditAction = z.infer<typeof BoardAuditActionSchema>;
 
 /** Entrée d'audit renvoyée par l'API. */

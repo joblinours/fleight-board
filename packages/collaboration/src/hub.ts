@@ -1,4 +1,6 @@
+import { can } from '@fleight/permissions';
 import {
+  type BoardRole,
   type ClientSessionMessage,
   ClientSessionMessageSchema,
   type Operation,
@@ -54,7 +56,19 @@ type LoadedRoom = {
  * Raison pour laquelle le serveur ferme une connexion : échec d'enregistrement
  * (le client se reconnecte), board inexistant ou supprimé (inutile de revenir).
  */
-export type DisconnectReason = 'storage' | 'board-not-found' | 'board-deleted';
+export type DisconnectReason = 'storage' | 'board-not-found' | 'board-deleted' | 'forbidden';
+
+/** Utilisateur authentifié d'une connexion. */
+export type HubUser = { id: string; name: string };
+
+/**
+ * Rôle d'un utilisateur sur un board ; `undefined` : aucun accès.
+ * Sans authentification (`user` absent), la décision revient aussi à cette fonction.
+ */
+export type Authorize = (
+  boardId: string,
+  user: HubUser | undefined,
+) => Promise<BoardRole | undefined> | BoardRole | undefined;
 
 type CommitGroup = Array<{ commit: BoardCommit; then: (() => void) | undefined }>;
 
@@ -80,6 +94,17 @@ export class CollaborationHub {
   readonly #store: BoardStore;
   readonly #log: HubLogger | undefined;
   readonly #disconnects = new Map<string, (reason: DisconnectReason) => void>();
+  /** Réévaluation du rôle de chaque connexion (membres modifiés). */
+  readonly #refreshers = new Map<
+    string,
+    { boardId: () => string | undefined; refresh: () => Promise<void> }
+  >();
+  /**
+   * Rôle de chaque connexion sur le board qu'elle rejoint (permissions). Sans
+   * cette fonction, tout participant est Editor. Modifiable après la construction
+   * (l'application la branche sur ses whiteboards).
+   */
+  authorize: Authorize | undefined;
   readonly #requireExistingBoards: boolean;
   readonly #lockOptions: { ttlMs?: number; now?: () => number };
   readonly #now: () => number;
@@ -98,8 +123,14 @@ export class CollaborationHub {
        * il est créé à la première modification (tests, développement sans base).
        */
       requireExistingBoards?: boolean;
+      /**
+       * Rôle de chaque connexion sur le board qu'elle rejoint (permissions).
+       * Sans cette fonction, tout participant est Editor.
+       */
+      authorize?: Authorize;
     } = {},
   ) {
+    this.authorize = options.authorize;
     this.#requireExistingBoards = options.requireExistingBoards ?? false;
     this.#pubsub = options.pubsub ?? new InMemoryPubSub<Broadcast>();
     this.#store = options.store ?? new MemoryBoardStore();
@@ -137,6 +168,17 @@ export class CollaborationHub {
     }
   }
 
+  /**
+   * Les membres d'un board ont changé : le rôle de chaque connexion est réévalué.
+   * Un participant qui perd l'accès est déconnecté ; les autres voient son nouveau rôle.
+   */
+  async refreshAccess(boardId: string): Promise<void> {
+    const refreshes = [...this.#refreshers.values()]
+      .filter((entry) => entry.boardId() === boardId)
+      .map((entry) => entry.refresh());
+    await Promise.all(refreshes);
+  }
+
   /** Nombre de boards chargés en mémoire. */
   get roomCount(): number {
     return this.#rooms.size;
@@ -162,12 +204,14 @@ export class CollaborationHub {
     send: (message: ServerSessionMessage) => void,
     disconnect?: (reason: DisconnectReason) => void,
     /** Utilisateur authentifié : auteur journalisé et nom affiché aux autres participants. */
-    user?: { id: string; name: string },
+    user?: HubUser,
   ): HubConnection {
     let joined:
       | { boardId: string; loaded: LoadedRoom; unsubscribe: Unsubscribe; clientId: string }
       | undefined;
     let gesture: OpenGesture | undefined;
+    /** Rôle sur le board rejoint. */
+    let role: BoardRole = 'editor';
     /** Dernier curseur relayé (limitation du débit). */
     let lastCursorAt = Number.NEGATIVE_INFINITY;
     /** Auteur journalisé : l'utilisateur, à défaut le client (stable à travers les reconnexions). */
@@ -223,6 +267,15 @@ export class CollaborationHub {
             disconnect?.('board-not-found');
             return;
           }
+          const granted = this.authorize
+            ? await this.authorize(message.boardId, user)
+            : ('editor' as const);
+          if (!granted || !can(granted, 'board.view')) {
+            this.#evictIfEmpty(message.boardId, loaded);
+            disconnect?.('forbidden');
+            return;
+          }
+          role = granted;
           const used = new Set([...loaded.participants.values()].map(({ color }) => color));
           const participant: Participant = {
             connectionId,
@@ -230,6 +283,7 @@ export class CollaborationHub {
             ...(user ? { userId: user.id } : {}),
             color: pickColor(user?.id ?? message.clientId, used),
             mode: message.mode ?? 'cursor',
+            role,
           };
           loaded.participants.set(connectionId, participant);
           const unsubscribe = this.#pubsub.subscribe(
@@ -247,6 +301,7 @@ export class CollaborationHub {
           send({
             type: 'JOINED',
             self: connectionId,
+            role,
             snapshot: loaded.room.snapshot(),
             participants: [...loaded.participants.values()],
             locks: loaded.locks.snapshot(),
@@ -273,7 +328,7 @@ export class CollaborationHub {
           break;
         }
         case 'LOCK': {
-          if (!joined) return;
+          if (!joined || !can(role, 'board.edit')) return;
           const { boardId, loaded } = joined;
           // Seuls les objets existants se verrouillent.
           const objectIds = message.objectIds.filter((id) => loaded.room.document.has(id));
@@ -335,6 +390,15 @@ export class CollaborationHub {
             return;
           }
           const { boardId, loaded, clientId } = joined;
+          if (!can(role, 'board.edit')) {
+            send({
+              type: 'REJECT',
+              batchId: message.batchId,
+              code: 'FORBIDDEN',
+              message: 'Votre rôle ne permet pas de modifier ce board',
+            });
+            return;
+          }
           // Un objet verrouillé par un autre participant n'est pas modifiable.
           const touched = touchedIds(message.operations);
           const holder = [...touched]
@@ -427,6 +491,48 @@ export class CollaborationHub {
       }
     };
 
+    /** Réévalue le rôle (membres modifiés) ; sans accès, la connexion est fermée. */
+    const refresh = async () => {
+      if (!joined || !this.authorize) return;
+      const { boardId } = joined;
+      const granted = await this.authorize(boardId, user);
+      // La connexion a pu quitter le board pendant la vérification.
+      if (!joined || joined.boardId !== boardId) return;
+      if (!granted || !can(granted, 'board.view')) {
+        leave();
+        disconnect?.('forbidden');
+        return;
+      }
+      if (granted === role) return;
+      role = granted;
+      const { loaded } = joined;
+      // Qui ne peut plus modifier rend ses verrous.
+      if (!can(role, 'board.edit')) {
+        const released = loaded.locks.releaseAll(connectionId);
+        if (released.length) this.#broadcastLocks(boardId, loaded, {}, released);
+      }
+      const current = loaded.participants.get(connectionId);
+      if (!current) return;
+      const participant = { ...current, role };
+      loaded.participants.set(connectionId, participant);
+      void this.#pubsub.publish(channel(boardId), {
+        payload: { type: 'PARTICIPANT_UPDATED', participant },
+      });
+    };
+    this.#refreshers.set(connectionId, {
+      boardId: () => joined?.boardId,
+      refresh: () => {
+        // Dans la file de la connexion : après un JOIN en cours.
+        queue = queue.then(refresh).catch((error: unknown) => {
+          this.#log?.error(
+            { connectionId, error: String(error) },
+            'échec de la vérification des droits',
+          );
+        });
+        return queue;
+      },
+    });
+
     return {
       receive: (data) => {
         const parsed = ClientSessionMessageSchema.safeParse(data);
@@ -447,6 +553,7 @@ export class CollaborationHub {
       },
       close: () => {
         this.#disconnects.delete(connectionId);
+        this.#refreshers.delete(connectionId);
         queue = queue.then(leave);
       },
     };

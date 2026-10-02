@@ -17,7 +17,7 @@ export type ServerHello = z.infer<typeof ServerHelloSchema>;
 
 export const ServerErrorSchema = z.object({
   type: z.literal('ERROR'),
-  code: z.enum(['INVALID_MESSAGE', 'UNSUPPORTED_PROTOCOL_VERSION', 'BOARD_NOT_FOUND']),
+  code: z.enum(['INVALID_MESSAGE', 'UNSUPPORTED_PROTOCOL_VERSION', 'BOARD_NOT_FOUND', 'FORBIDDEN']),
   message: z.string(),
 });
 export type ServerError = z.infer<typeof ServerErrorSchema>;

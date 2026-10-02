@@ -1091,3 +1091,109 @@ button.link {
   margin-left: auto;
   color: GrayText;
 }
+
+.board-readonly {
+  align-self: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.board-role {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.board-participant-role {
+  color: GrayText;
+  font-size: 11px;
+}
+
+.board-members {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right));
+  top: 160px;
+  display: grid;
+  gap: 8px;
+  width: min(380px, calc(100vw - 24px));
+  max-height: calc(100vh - 200px);
+  overflow: auto;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: Canvas;
+  box-shadow: 0 4px 24px rgb(0 0 0 / 0.2);
+  font-size: 13px;
+}
+
+.board-members-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.board-members-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.board-members ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.board-members li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.board-members small {
+  color: GrayText;
+}
+
+.board-members-role {
+  color: GrayText;
+}
+
+.board-members-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.board-members-actions:empty {
+  display: none;
+}
+
+.board-members-add {
+  display: flex;
+  gap: 4px;
+}
+
+.board-members-identifier {
+  flex: 1;
+  min-width: 0;
+}
+
+.board-members-default {
+  display: grid;
+  gap: 4px;
+}
+
+.board-members-you {
+  margin: 0;
+}
+
+.boards-shared {
+  color: #2563eb;
+}

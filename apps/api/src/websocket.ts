@@ -17,6 +17,8 @@ export const CloseCode = {
   Revoked: 4401,
   /** Board inexistant. */
   BoardNotFound: 4404,
+  /** Accès refusé ou retiré (rôle insuffisant, membre retiré). */
+  Forbidden: 4403,
   /** Board supprimé pendant la session. */
   BoardDeleted: 4410,
   UnsupportedProtocolVersion: 4426,
@@ -74,6 +76,11 @@ export async function registerWebSocket(
             fail(
               { type: 'ERROR', code: 'BOARD_NOT_FOUND', message: 'Board introuvable' },
               CloseCode.BoardNotFound,
+            );
+          } else if (reason === 'forbidden') {
+            fail(
+              { type: 'ERROR', code: 'FORBIDDEN', message: 'Accès refusé à ce board' },
+              CloseCode.Forbidden,
             );
           } else if (reason === 'board-deleted') {
             socket.close(CloseCode.BoardDeleted, 'BOARD_DELETED');

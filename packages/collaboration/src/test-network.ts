@@ -1,7 +1,7 @@
 import type { BoardDocument } from '@fleight/document';
 import type { BoardObject, ServerSessionMessage } from '@fleight/protocol';
 import { CollaborationClient } from './client';
-import { CollaborationHub } from './hub';
+import { type Authorize, CollaborationHub, type DisconnectReason } from './hub';
 import { type BoardStore, MemoryBoardStore } from './store';
 
 /**
@@ -20,6 +20,8 @@ export type TestClient = {
   readonly received: ServerSessionMessage[];
   /** Événements remontés par le client (rejets, verrous refusés). */
   events: Array<{ type: string; detail: unknown }>;
+  /** Fermetures demandées par le serveur. */
+  disconnects: DisconnectReason[];
   close(): void;
   /** Coupure réseau : la connexion tombe, les messages en transit sont perdus. */
   goOffline(): void;
@@ -39,20 +41,27 @@ export async function drain(hub: CollaborationHub): Promise<void> {
 export function createNetwork<Store extends BoardStore = MemoryBoardStore>(
   boardId = 'board',
   store: Store = new MemoryBoardStore() as unknown as Store,
-  hubOptions: { lockTtlMs?: number; now?: () => number } = {},
+  hubOptions: { lockTtlMs?: number; now?: () => number; authorize?: Authorize } = {},
 ) {
   const hub = new CollaborationHub({ store, ...hubOptions });
   const clients: TestClient[] = [];
 
-  function connect(name: string): TestClient {
+  /** `asUser` : connexion authentifiée (utilisateur `name`), pour les permissions. */
+  function connect(name: string, { asUser = false } = {}): TestClient {
     const toServer: string[] = [];
     const toClient: ServerSessionMessage[] = [];
     const scheduled: Array<() => void> = [];
     let connections = 1;
     let online = true;
-    let connection = hub.open(name, (message) => {
-      if (online) toClient.push(message);
-    });
+    const disconnects: DisconnectReason[] = [];
+    let connection = hub.open(
+      name,
+      (message) => {
+        if (online) toClient.push(message);
+      },
+      (reason) => disconnects.push(reason),
+      asUser ? { id: name, name } : undefined,
+    );
     const events: Array<{ type: string; detail: unknown }> = [];
     const client = new CollaborationClient({
       boardId,
@@ -89,6 +98,7 @@ export function createNetwork<Store extends BoardStore = MemoryBoardStore>(
         for (const callback of scheduled.splice(0)) callback();
       },
       events,
+      disconnects,
       get received() {
         return [...toClient];
       },
