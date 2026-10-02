@@ -17,6 +17,7 @@ export {
   nearestAnchor,
   objectBox,
   type Point,
+  polygonVertices,
   type Segment,
 } from './geometry';
 export type { DocumentOperation, ObjectPatch } from './operations';

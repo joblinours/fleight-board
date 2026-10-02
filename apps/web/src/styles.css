@@ -962,6 +962,87 @@ button.link {
   color: #dc2626;
 }
 
+.board-upload {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+  border-radius: 8px;
+  background: Canvas;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.board-upload input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.board-properties {
+  position: absolute;
+  left: max(12px, env(safe-area-inset-left));
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  gap: 10px;
+  width: 196px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: Canvas;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.15);
+  font-size: 12px;
+}
+
+.board-property {
+  display: grid;
+  gap: 4px;
+}
+
+.board-property > span {
+  color: GrayText;
+  font-weight: 600;
+}
+
+.board-property > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.board-property input[type="range"] {
+  width: 100%;
+}
+
+.board-property input[type="color"] {
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.board-swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+  border-radius: 50%;
+}
+
+.board-swatch.selected {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+.board-swatch.none {
+  background:
+    linear-gradient(135deg, transparent 45%, #dc2626 45%, #dc2626 55%, transparent 55%), Canvas;
+}
+
 .auth-field.invalid input {
   border-color: #dc2626;
 }

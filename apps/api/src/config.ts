@@ -21,6 +21,10 @@ const ConfigSchema = z
     TRUST_PROXY: flag.default(false),
     /** Demandes de création de compte depuis l'interface. */
     ALLOW_REGISTRATION: flag.default(true),
+    /** Répertoire des données (fichiers importés). */
+    DATA_DIR: z.string().default('./data'),
+    /** Taille maximale d'une image importée, en Mio. */
+    MAX_UPLOAD_MB: z.coerce.number().positive().max(100).default(10),
     SESSION_TTL_DAYS: z.coerce.number().positive().default(30),
     SESSION_IDLE_DAYS: z.coerce.number().positive().default(7),
   })

@@ -10,7 +10,7 @@ const MIN_LENGTH_PX = 8;
 
 /** Objets auxquels un connecteur peut s'accrocher. */
 function connectable(object: BoardObject): boolean {
-  return object.type === 'rectangle' || object.type === 'ellipse' || object.type === 'text';
+  return object.type !== 'connector' && object.type !== 'stroke';
 }
 
 type Drag = {
@@ -22,10 +22,25 @@ type Drag = {
   tolerance: number;
 };
 
-/** Trace un connecteur ; ses extrémités s'accrochent à l'ancrage le plus proche des formes. */
+/**
+ * Trace un connecteur, dont les extrémités s'accrochent à l'ancrage le plus proche
+ * des formes ; ou une ligne / une flèche libres (mêmes objets, sans accrochage).
+ */
 export class ConnectorTool implements Tool {
-  readonly name = 'connector' as const;
+  readonly name: 'connector' | 'line' | 'arrow';
   #drag: Drag | undefined;
+
+  constructor(name: 'connector' | 'line' | 'arrow' = 'connector') {
+    this.name = name;
+  }
+
+  get #snaps(): boolean {
+    return this.name === 'connector';
+  }
+
+  get #arrowEnd(): boolean {
+    return this.name !== 'line';
+  }
 
   down(context: ToolContext, point: ToolPoint, kind: PointerKind): void {
     const tolerance = context.tolerance(kind);
@@ -73,7 +88,8 @@ export class ConnectorTool implements Tool {
           stroke: context.style.color,
           strokeWidth: context.style.strokeWidth,
           arrowStart: false,
-          arrowEnd: true,
+          arrowEnd: this.#arrowEnd,
+          ...(context.style.opacity < 1 ? { opacity: context.style.opacity } : {}),
         },
       },
     ]);
@@ -97,12 +113,13 @@ export class ConnectorTool implements Tool {
     ctx.moveTo(drag.startPoint.x, drag.startPoint.y);
     ctx.lineTo(end.x, end.y);
     ctx.stroke();
-    paintArrowHead(ctx, drag.startPoint, end, 10 / view.zoom);
+    if (this.#arrowEnd) paintArrowHead(ctx, drag.startPoint, end, 10 / view.zoom);
     if (drag.target) paintAnchors(ctx, drag.target, view.zoom);
     ctx.restore();
   }
 
   #targetAt(context: ToolContext, point: Point, tolerance: number) {
+    if (!this.#snaps) return undefined;
     const object = context.hitTest(point, tolerance, connectable);
     return object && object.type !== 'connector' ? object : undefined;
   }

@@ -100,12 +100,17 @@ export class BoardDocument {
       }
       case 'update': {
         const current = this.#require(operation.id);
+        // Dans un patch, `null` retire une propriété facultative (ex. opacité d'un objet
+        // créé avant qu'elle existe) ; l'inverse d'une propriété absente est donc `null`.
         const previous: ObjectPatch = {};
-        for (const key of Object.keys(operation.patch)) {
+        const merged: Record<string, unknown> = { ...current };
+        for (const [key, value] of Object.entries(operation.patch)) {
           if (key === 'id' || key === 'type') throw new DocumentError(`${key} non modifiable`);
-          previous[key] = (current as Record<string, unknown>)[key];
+          previous[key] = (current as Record<string, unknown>)[key] ?? null;
+          if (value === null) delete merged[key];
+          else merged[key] = value;
         }
-        const next = BoardObjectSchema.parse({ ...current, ...operation.patch });
+        const next = BoardObjectSchema.parse(merged);
         this.#unindex(current);
         this.#objects.set(next.id, next);
         this.#index(next);

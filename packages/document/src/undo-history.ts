@@ -184,7 +184,8 @@ function revertOperations(
         const previous = (before as Record<string, unknown>)[key];
         if (equal(wrote, previous)) continue;
         // Seulement si la valeur est toujours celle écrite par l'utilisateur.
-        if (equal((current as Record<string, unknown>)[key], wrote)) patch[key] = previous;
+        // Propriété absente avant l'action : `null` la retire (transmissible en JSON).
+        if (equal((current as Record<string, unknown>)[key], wrote)) patch[key] = previous ?? null;
         else conflict = true;
       }
       if (conflict) skipped.push(id);

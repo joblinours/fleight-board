@@ -8,7 +8,7 @@ import {
   type RevertResult,
   UndoHistory,
 } from '@fleight/document';
-import type { BoardObject } from '@fleight/protocol';
+import { type BoardObject, isShape } from '@fleight/protocol';
 import { createId } from '@fleight/shared';
 import { Camera } from '../camera';
 import { attachDomInput } from '../input/dom-input';
@@ -21,13 +21,15 @@ import {
 import { CanvasRenderer, type Page, type ViewState } from '../renderer';
 import { Scene } from '../scene';
 import { HANDLE_SIZE_PX, HANDLES, handlePosition } from './handles';
-import { boardPainters } from './painters';
+import { boardPainters, createBoardPainters, type ImageSource } from './painters';
 import type { BoardSceneItem } from './scene-items';
 import { syncScene } from './scene-sync';
 import { Selection } from './selection';
 import { measureText } from './text-metrics';
 import { ConnectorTool } from './tools/connector-tool';
+import { EraserTool } from './tools/eraser-tool';
 import { PenTool } from './tools/pen-tool';
+import { PolygonTool } from './tools/polygon-tool';
 import { SelectTool } from './tools/select-tool';
 import { ShapeTool } from './tools/shape-tool';
 import { TextTool } from './tools/text-tool';
@@ -82,7 +84,29 @@ export type BoardEditorOptions = {
   onUndoSkipped?(result: RevertResult & { intent: 'undo' | 'redo' }): void;
   /** Page d'un canvas standard ; absente : canvas infini. */
   page?: Page;
+  /** Contenu des objets `image` (chargé par l'application). */
+  images?: ImageSource;
 };
+
+/**
+ * Propriétés modifiables depuis le panneau de propriétés. Chacune s'applique aux
+ * objets sélectionnés qui la possèdent, et devient le style des prochains objets.
+ */
+export type StyleChange = Partial<{
+  /** Contour, connecteur, texte ou trait. */
+  stroke: string;
+  /** Remplissage des formes (`transparent` : sans remplissage). */
+  fill: string;
+  /** Épaisseur des contours et connecteurs, ou du trait à main levée. */
+  strokeWidth: number;
+  opacity: number;
+  fontSize: number;
+  arrowStart: boolean;
+  arrowEnd: boolean;
+}>;
+
+/** Délai sans nouvelle modification après lequel un réglage (curseur…) est terminé. */
+const STYLE_GESTURE_MS = 600;
 
 /** Éditeur de whiteboard local : document, rendu, entrées, outils et sélection. */
 export class BoardEditor {
@@ -90,7 +114,13 @@ export class BoardEditor {
   readonly selection = new Selection();
   readonly camera = new Camera();
   readonly router: InputRouter;
-  readonly style: ToolStyle = { color: '#1f2937', fill: '#ffffff', strokeWidth: 2, penSize: 4 };
+  readonly style: ToolStyle = {
+    color: '#1f2937',
+    fill: '#ffffff',
+    strokeWidth: 2,
+    penSize: 4,
+    opacity: 1,
+  };
 
   readonly #scene = new Scene<BoardSceneItem>();
   readonly #sceneRenderer: CanvasRenderer<BoardSceneItem>;
@@ -99,10 +129,19 @@ export class BoardEditor {
     select: new SelectTool(),
     rectangle: new ShapeTool('rectangle'),
     ellipse: new ShapeTool('ellipse'),
+    polygon: new PolygonTool(),
     text: new TextTool(),
-    connector: new ConnectorTool(),
-    pen: new PenTool(),
+    connector: new ConnectorTool('connector'),
+    line: new ConnectorTool('line'),
+    arrow: new ConnectorTool('arrow'),
+    pen: new PenTool('pen'),
+    highlighter: new PenTool('highlighter'),
+    eraser: new EraserTool(),
   };
+  /** Réglage de propriétés en cours (curseur, couleur) : une seule action annulable. */
+  #styleGesture:
+    | { key: string; id: string; ids: string[]; timer: ReturnType<typeof setTimeout> }
+    | undefined;
   readonly #options: BoardEditorOptions;
   readonly #modifiers = { shift: false };
   /** Historique d'annulation de l'utilisateur local uniquement. */
@@ -125,7 +164,7 @@ export class BoardEditor {
       canvas: options.sceneCanvas,
       scene: this.#scene,
       camera: this.camera,
-      painters: boardPainters,
+      painters: createBoardPainters(options.images),
       ...(options.page ? { page: options.page } : {}),
     });
     this.#overlayRenderer = new CanvasRenderer({
@@ -293,6 +332,108 @@ export class BoardEditor {
     this.#overlayRenderer.requestRender();
   }
 
+  /** Redessine les objets (une image vient de se charger…). */
+  redraw(): void {
+    this.#sceneRenderer.requestRender();
+  }
+
+  /** Objets sélectionnés. */
+  selectedObjects(): BoardObject[] {
+    return [...this.selection.ids]
+      .map((id) => this.document.get(id))
+      .filter((object): object is BoardObject => object !== undefined);
+  }
+
+  /**
+   * Applique des propriétés aux objets sélectionnés (sauf ceux modifiés par
+   * d'autres participants) et au style des prochains objets. Les réglages
+   * successifs d'une même propriété forment une seule action annulable.
+   */
+  applyStyle(change: StyleChange): void {
+    if (change.stroke !== undefined) this.style.color = change.stroke;
+    if (change.fill !== undefined) this.style.fill = change.fill;
+    if (change.strokeWidth !== undefined) this.style.strokeWidth = change.strokeWidth;
+    if (change.opacity !== undefined) this.style.opacity = change.opacity;
+
+    const locks = this.#options.locks;
+    const operations: DocumentOperation[] = [];
+    for (const object of this.selectedObjects()) {
+      if (locks?.lockedBy(object.id)) continue;
+      const patch = stylePatch(object, change);
+      if (Object.keys(patch).length) operations.push({ kind: 'update', id: object.id, patch });
+    }
+    if (!operations.length) return;
+
+    // Pendant un geste du pointeur, le réglage en fait partie.
+    if (this.#gestureId) {
+      this.apply(operations);
+      return;
+    }
+    const key = Object.keys(change).sort().join(',');
+    if (this.#styleGesture?.key !== key) this.#endStyleGesture();
+    const ids = operations.map((operation) => (operation.kind === 'update' ? operation.id : ''));
+    if (!this.#styleGesture) {
+      locks?.acquire(ids);
+      this.#styleGesture = { key, id: createId(), ids, timer: setTimeout(() => {}, 0) };
+    }
+    const gesture = this.#styleGesture;
+    clearTimeout(gesture.timer);
+    this.#gestureId = gesture.id;
+    try {
+      this.apply(operations);
+    } finally {
+      this.#gestureId = undefined;
+    }
+    gesture.timer = setTimeout(() => this.#endStyleGesture(), STYLE_GESTURE_MS);
+  }
+
+  #endStyleGesture(): void {
+    const gesture = this.#styleGesture;
+    if (!gesture) return;
+    this.#styleGesture = undefined;
+    clearTimeout(gesture.timer);
+    this.#history.endGroup(gesture.id);
+    this.#notifyHistory();
+    this.#options.sink?.endGesture(gesture.id);
+    this.#options.locks?.release(gesture.ids);
+  }
+
+  /**
+   * Ajoute une image au centre de la vue, réduite pour tenir dans 60 % de l'écran,
+   * et la sélectionne.
+   */
+  insertImage(image: { assetId: string; width: number; height: number }): string {
+    const { width: viewWidth, height: viewHeight } = this.#sceneRenderer.viewport;
+    const zoom = this.camera.zoom;
+    const scale = Math.min(
+      1,
+      (viewWidth * 0.6) / zoom / image.width,
+      (viewHeight * 0.6) / zoom / image.height,
+    );
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+    const center = this.camera.screenToWorld({ x: viewWidth / 2, y: viewHeight / 2 });
+    const id = createId();
+    this.apply([
+      {
+        kind: 'create',
+        object: {
+          type: 'image',
+          id,
+          zIndex: this.document.topZIndex() + 1,
+          x: Math.round(center.x - width / 2),
+          y: Math.round(center.y - height / 2),
+          width,
+          height,
+          assetId: image.assetId,
+        },
+      },
+    ]);
+    this.setTool('select');
+    this.selection.set([id]);
+    return id;
+  }
+
   selectAll(): void {
     this.selection.set([...this.document.all()].map(({ id }) => id));
   }
@@ -337,7 +478,7 @@ export class BoardEditor {
       this.apply([
         { kind: 'update', id, patch: { text: value, ...measureText(value, object.fontSize) } },
       ]);
-    } else if (object.type === 'rectangle' || object.type === 'ellipse') {
+    } else if (isShape(object)) {
       if (value !== object.label) this.apply([{ kind: 'update', id, patch: { label: value } }]);
     }
   }
@@ -368,7 +509,7 @@ export class BoardEditor {
         align: 'left',
       };
     }
-    if (object.type === 'rectangle' || object.type === 'ellipse') {
+    if (isShape(object)) {
       const origin = this.camera.worldToScreen(object);
       return {
         ...origin,
@@ -383,6 +524,7 @@ export class BoardEditor {
   }
 
   dispose(): void {
+    this.#endStyleGesture();
     for (const cleanup of this.#cleanups.splice(0)) cleanup();
     this.#sceneRenderer.dispose();
     this.#overlayRenderer.dispose();
@@ -550,18 +692,28 @@ export class BoardEditor {
   }
 
   #attachKeyboard(): () => void {
-    const editing = (event: KeyboardEvent) =>
-      event.target instanceof HTMLElement &&
-      (event.target.isContentEditable ||
-        ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName));
+    // Saisie de texte en cours : les raccourcis sont laissés au champ. Un curseur,
+    // une case à cocher ou un sélecteur de couleur (panneau de propriétés) ne bloquent rien.
+    const textInputs = new Set(['text', 'search', 'email', 'password', 'number', 'url', 'tel']);
+    const editing = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return false;
+      if (target.isContentEditable || target.tagName === 'TEXTAREA') return true;
+      return target instanceof HTMLInputElement && textInputs.has(target.type);
+    };
 
     const shortcuts: Record<string, ToolName> = {
       v: 'select',
       r: 'rectangle',
       o: 'ellipse',
+      g: 'polygon',
       t: 'text',
       c: 'connector',
+      l: 'line',
+      a: 'arrow',
       p: 'pen',
+      h: 'highlighter',
+      e: 'eraser',
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -614,4 +766,42 @@ function paintHandle(
   ctx.fillStyle = '#ffffff';
   ctx.fill();
   ctx.stroke();
+}
+
+/** Propriétés d'un objet concernées par un changement de style. */
+export function stylePatch(object: BoardObject, change: StyleChange): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  if (change.opacity !== undefined) patch.opacity = change.opacity;
+  switch (object.type) {
+    case 'rectangle':
+    case 'ellipse':
+    case 'polygon':
+      if (change.stroke !== undefined) patch.stroke = change.stroke;
+      if (change.fill !== undefined) patch.fill = change.fill;
+      if (change.strokeWidth !== undefined) patch.strokeWidth = change.strokeWidth;
+      break;
+    case 'connector':
+      if (change.stroke !== undefined) patch.stroke = change.stroke;
+      if (change.strokeWidth !== undefined) patch.strokeWidth = Math.max(0.1, change.strokeWidth);
+      if (change.arrowStart !== undefined) patch.arrowStart = change.arrowStart;
+      if (change.arrowEnd !== undefined) patch.arrowEnd = change.arrowEnd;
+      break;
+    case 'text':
+      if (change.stroke !== undefined) patch.color = change.stroke;
+      if (change.fontSize !== undefined) {
+        Object.assign(
+          patch,
+          { fontSize: change.fontSize },
+          measureText(object.text, change.fontSize),
+        );
+      }
+      break;
+    case 'stroke':
+      if (change.stroke !== undefined) patch.color = change.stroke;
+      if (change.strokeWidth !== undefined) patch.size = Math.max(0.5, change.strokeWidth);
+      break;
+    case 'image':
+      break;
+  }
+  return patch;
 }

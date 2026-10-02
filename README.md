@@ -56,8 +56,8 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 | Whiteboards : création (nom, description, format), liste, renommage, masquage, suppression | 🧪 Implémenté (M1.2) |
 | Canvas standard (A4, A3, A2, 16:9, 4:3, personnalisé) | 🧪 Page de taille fixe, portrait ou paysage (M1.2) |
 | Canvas infini (zoom, pan) | 🧪 Moteur de rendu prototypé (M0.2) |
-| Primitives : rectangle, ellipse, ligne, flèche, polygone, texte, image | 🧪 Rectangle, ellipse et texte prototypés (M0.4) |
-| Dessin libre : stylo, surligneur, gomme, couleur, épaisseur, opacité | 🧪 Stylo à pression prototypé (M0.3) |
+| Primitives : rectangle, ellipse, ligne, flèche, polygone, texte, image | 🧪 Implémentées (M1.3) ; images PNG, JPEG, GIF, WebP importées par bouton, glisser-déposer ou collage |
+| Dessin libre : stylo, surligneur, gomme, couleur, épaisseur, opacité | 🧪 Implémenté (M1.3) ; panneau de propriétés pour la sélection et les prochains objets |
 | Sélection, groupes, copier/coller, duplication | 🧪 Sélection, déplacement, redimensionnement prototypés (M0.4) |
 | Frames (conteneurs titrés, exportables) | _(prévu)_ |
 | Connecteurs droits/orthogonaux, ancrages, labels, suivi des objets | 🧪 Connecteurs droits ancrés qui suivent les objets (M0.4) |
@@ -329,6 +329,8 @@ Variables d'environnement (`apps/api/.env`, modèle : `apps/api/.env.example`) :
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_EMAIL` | — | Premier Admin, créé au démarrage s'il n'existe aucun Admin actif |
 | `ALLOW_REGISTRATION` | `true` | Demandes de compte depuis l'interface (validées par un Admin) |
 | `SESSION_TTL_DAYS` / `SESSION_IDLE_DAYS` | `30` / `7` | Durée de vie maximale d'une session, et après inactivité |
+| `DATA_DIR` | `./data` | Répertoire des données : fichiers importés dans `blobs/` (volume Docker en production) |
+| `MAX_UPLOAD_MB` | `10` | Taille maximale d'une image importée |
 | `TRUST_PROXY` | `false` | Derrière un reverse proxy HTTPS : protocole et IP lus dans `X-Forwarded-*` |
 
 ### Endpoints de l'API
@@ -349,6 +351,8 @@ Variables d'environnement (`apps/api/.env`, modèle : `apps/api/.env.example`) :
 | `GET`, `POST /boards` | Ses whiteboards (`?hidden=true` : avec les masqués) ; création (nom, description, canvas infini ou standard) |
 | `GET /boards/code/:code` | Board correspondant à un code court (rate limiting par IP) |
 | `GET`, `PATCH`, `DELETE /boards/:id` | Détails ; renommage, description, masquage, suppression immédiate (propriétaire) |
+| `POST /boards/:id/assets` | Import d'une image (corps brut ; type vérifié dans le fichier : PNG, JPEG, GIF, WebP ; SVG refusé) |
+| `GET /assets/:id` | Image importée (session requise, contenu immuable) |
 | `GET /boards/:id/audit?limit=200` | Audit d'un board, du plus récent au plus ancien (propriétaire du board, Admin) |
 | `WS /ws` | WebSocket, session requise ; le premier message doit être `HELLO` avec la version du protocole |
 

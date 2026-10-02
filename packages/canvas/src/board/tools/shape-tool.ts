@@ -47,6 +47,7 @@ export class ShapeTool implements Tool {
           stroke: context.style.color,
           strokeWidth: context.style.strokeWidth,
           label: '',
+          ...(context.style.opacity < 1 ? { opacity: context.style.opacity } : {}),
         },
       },
     ]);

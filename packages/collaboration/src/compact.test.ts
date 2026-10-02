@@ -43,3 +43,15 @@ describe('compactOperations', () => {
     ]).toEqual(['a', 'b']);
   });
 });
+
+describe('compactOperations et propriétés retirées', () => {
+  it('un null fusionné dans une création retire la propriété', () => {
+    const object = { ...rect('a'), opacity: 0.5 };
+    expect(
+      compactOperations([
+        { kind: 'create', object },
+        { kind: 'update', id: 'a', patch: { opacity: null } },
+      ]),
+    ).toEqual([{ kind: 'create', object: rect('a') }]);
+  });
+});

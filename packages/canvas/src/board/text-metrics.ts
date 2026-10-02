@@ -4,7 +4,9 @@ let measureContext: CanvasRenderingContext2D | null | undefined;
 
 /** Taille d'un texte multiligne, en unités monde. */
 export function measureText(text: string, fontSize: number): { width: number; height: number } {
-  measureContext ??= document.createElement('canvas').getContext('2d');
+  // Hors navigateur (tests, serveur) : estimation à partir du nombre de caractères.
+  measureContext ??=
+    typeof document === 'undefined' ? null : document.createElement('canvas').getContext('2d');
   const lines = text.split('\n');
   let width = 0;
   if (measureContext) {

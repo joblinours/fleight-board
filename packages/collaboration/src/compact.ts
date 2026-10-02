@@ -26,10 +26,13 @@ export function compactOperations(operations: readonly Operation[]): Operation[]
         continue;
       }
       if (previous.kind === 'create') {
-        result[index as number] = {
-          kind: 'create',
-          object: { ...previous.object, ...operation.patch } as typeof previous.object,
-        };
+        const object: Record<string, unknown> = { ...previous.object };
+        for (const [key, value] of Object.entries(operation.patch)) {
+          // `null` retire la propriété (voir BoardDocument).
+          if (value === null) delete object[key];
+          else object[key] = value;
+        }
+        result[index as number] = { kind: 'create', object: object as typeof previous.object };
         continue;
       }
     }

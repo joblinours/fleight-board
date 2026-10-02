@@ -283,11 +283,13 @@ Au-delà de l'objectif, sur un seul board : 100 utilisateurs → ACK p50 115 ms,
 
 ### M1.3 — Objets complets
 
-- [ ] Primitives : rectangle, ellipse, ligne, flèche, polygone, texte, image
-- [ ] Édition de texte (overlay DOM au-dessus du canvas)
-- [ ] Upload d'images (limites côté serveur, `BlobStorage`)
-- [ ] Dessin libre : stylo, surligneur, gomme, couleur, épaisseur, opacité
-- [ ] Panneau de propriétés
+- [x] Primitives : rectangle, ellipse, ligne, flèche, polygone, texte, image
+- [x] Édition de texte (overlay DOM au-dessus du canvas)
+- [x] Upload d'images (limites côté serveur, `BlobStorage`)
+- [x] Dessin libre : stylo, surligneur, gomme, couleur, épaisseur, opacité
+- [x] Panneau de propriétés
+
+→ **Validé** : tests des outils (polygone, ligne, flèche, surligneur, gomme), des propriétés par type d'objet, de la géométrie du polygone et de la détection des images ; tests PostgreSQL de l'import (type lu dans le fichier, dimensions, déduplication, refus d'un SVG, limite de taille, droits) ; parcours dans le navigateur avec un second participant.
 
 ### M1.4 — Sélection, groupes, frames
 
@@ -375,6 +377,7 @@ Au-delà de l'objectif, sur un seul board : 100 utilisateurs → ACK p50 115 ms,
 | Date | Décision |
 |---|---|
 | 2026-10-01 | Plan validé ; décisions D1 à D22 actées |
+| 2026-10-02 | M1.3 : ligne et flèche sont des connecteurs à extrémités libres (même objet, sans accrochage) ; polygone à sommets normalisés dans son cadre ; gomme « objet » (efface les traits à main levée touchés) ; images stockées sous leur empreinte SHA-256 (dédupliquées), type lu dans le fichier et SVG refusé (risque de script) ; les fichiers d'un board supprimé restent sur disque, nettoyage prévu avec la rétention (Phase 2) ; un réglage du panneau devient aussi le style des prochains objets. Dans un patch, `null` **retire** une propriété facultative : sans cela, annuler un réglage d'opacité sur un objet qui n'en avait pas produisait `undefined`, perdu en JSON — le client et le serveur divergeaient |
 | 2026-10-02 | M1.2 : les boards sont créés par l'API (plus de création implicite au premier JOIN) ; un board existant reste ouvrable par tout utilisateur connecté qui a son lien ou son code jusqu'aux permissions (M1.7) et aux sessions publiques/privées (M1.8). Supprimer le compte du propriétaire conserve ses boards (propriétaire vide, à réattribuer en M1.7). Formats en unités monde à 96 par pouce (A4 = 794 × 1123) ; les objets peuvent déborder de la page |
 | 2026-10-02 | M1.1 : l'auteur journalisé devient l'**utilisateur** (nom du compte affiché aux autres participants) ; la détection de conflits reste par **client** (deux appareils d'un même compte sont traités comme deux participants). Le WebSocket exige une session ; l'audit d'un board est réservé aux Admins en attendant les propriétaires (M1.2). Cookie `Secure` seulement en HTTPS, pour que l'iPad fonctionne en HTTP sur le réseau local de développement |
 | 2026-10-02 | **Fin de Phase 0 : GO** pour la Phase 1 (rapport `docs/poc-report.md` validé) |
