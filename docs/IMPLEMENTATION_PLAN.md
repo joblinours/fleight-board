@@ -228,8 +228,11 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 
 ### M0.10 — Audit log
 
-- [ ] Table `audit_logs` (timestamp, acteur, type d'acteur, action, objet, board, session, métadonnées)
-- [ ] Une entrée par opération finale, y compris les undo
+- [x] Table `audit_logs` (timestamp, acteur, type d'acteur, action, objet, board, session, métadonnées), écrite dans la même transaction que le journal
+- [x] Une entrée par opération finale, y compris les undo
+- [x] Lecture : `GET /boards/:boardId/audit` et page `#/audit/<board>`
+
+→ **Validé** : tests unitaires (une entrée par opération, détails), tests de collaboration (un geste de plusieurs lots = une entrée, annulation et rétablissement marqués, lot refusé non audité), tests PostgreSQL (écriture transactionnelle, lecture HTTP), et essai dans un navigateur : un déplacement → une ligne « geste », Ctrl+Z → « annulation », Ctrl+Maj+Z → « rétablissement ».
 
 ### M0.11 — Tests de collaboration
 
@@ -357,6 +360,7 @@ _À 20 000 objets, l'iPad reste proche de sa fréquence d'affichage avec moins d
 | Date | Décision |
 |---|---|
 | 2026-10-01 | Plan validé ; décisions D1 à D22 actées |
+| 2026-10-02 | M0.10 : l'audit est dérivé du journal (une entrée par opération de l'effet net d'un lot ou d'un geste), sans clé étrangère vers `boards` pour survivre à la suppression d'un board ; acteur = client et type `client` jusqu'aux comptes (M1.1), le nom affiché est conservé dans les métadonnées en attendant |
 | 2026-10-02 | M0.9 : en cas de modifications concurrentes d'une même propriété, le **premier lot arrivé au serveur l'emporte**, le second est refusé (`CONFLICT`) puis resynchronisé — remplace le « dernier qui écrit gagne » de M0.5 ; des propriétés différentes d'un même objet restent fusionnées |
 | 2026-10-02 | M0.9 : deux bugs trouvés par le test aléatoire et corrigés — (1) un board déchargé de la mémoire pendant qu'un participant le rejoignait (course entre départ du dernier et arrivée du suivant, présente depuis M0.6) ; (2) une resynchronisation demandée juste avant une coupure n'était jamais redemandée |
 | 2026-10-01 | M0.8 : l'historique vit côté client pendant la session ; sa reconstruction depuis le journal au rechargement attend l'authentification (M1.1), car l'acteur journalisé est encore une connexion et non un utilisateur |

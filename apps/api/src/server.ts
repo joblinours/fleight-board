@@ -2,6 +2,7 @@ import { CollaborationHub } from '@fleight/collaboration';
 import { buildApp } from './app';
 import { loadConfig } from './config';
 import { connectDatabase } from './database';
+import { PostgresAuditLog } from './db/audit-log';
 import { PostgresBoardStore } from './db/board-store';
 
 const config = loadConfig();
@@ -27,6 +28,7 @@ let hub: CollaborationHub | undefined;
 const app = await buildApp({
   database,
   logger: { level: config.LOG_LEVEL },
+  audit: new PostgresAuditLog(database.db),
   createHub: (log) => {
     hub = new CollaborationHub({ store: new PostgresBoardStore(database.db), log });
     return hub;

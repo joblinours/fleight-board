@@ -1,7 +1,12 @@
-import type { BoardCommit, BoardStore, StoredBoard } from '@fleight/collaboration';
+import {
+  auditEntriesOf,
+  type BoardCommit,
+  type BoardStore,
+  type StoredBoard,
+} from '@fleight/collaboration';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../database';
-import { boards, objects, operations, snapshots } from './schema';
+import { auditLogs, boards, objects, operations, snapshots } from './schema';
 
 /** Une copie complète du board est conservée tous les N lots. */
 export const SNAPSHOT_INTERVAL = 500;
@@ -83,6 +88,21 @@ export class PostgresBoardStore implements BoardStore {
             operations: entry.operations,
           })),
         );
+
+        const audit = commit.journal.flatMap((entry) => auditEntriesOf(boardId, entry));
+        if (audit.length) {
+          await tx.insert(auditLogs).values(
+            audit.map((entry) => ({
+              actor: entry.actor,
+              actorType: entry.actorType,
+              action: entry.action,
+              boardId,
+              objectId: entry.objectId,
+              sessionId: entry.session ?? null,
+              metadata: entry.metadata,
+            })),
+          );
+        }
       }
 
       // Copie complète à chaque palier de SNAPSHOT_INTERVAL lots.

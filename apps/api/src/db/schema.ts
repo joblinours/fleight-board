@@ -1,6 +1,8 @@
+import type { AuditAction, AuditActorType, AuditMetadata } from '@fleight/collaboration';
 import type { BoardObject, Operation } from '@fleight/protocol';
 import {
   bigint,
+  bigserial,
   index,
   integer,
   jsonb,
@@ -66,4 +68,27 @@ export const snapshots = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [primaryKey({ columns: [table.boardId, table.seq] })],
+);
+
+/**
+ * Audit : une entrée par opération finale (undo et redo compris).
+ * Sans clé étrangère vers `boards` : l'audit survit à la suppression d'un board.
+ */
+export const auditLogs = pgTable(
+  'audit_logs',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    actor: text('actor').notNull(),
+    actorType: text('actor_type').$type<AuditActorType>().notNull(),
+    action: text('action').$type<AuditAction>().notNull(),
+    boardId: text('board_id').notNull(),
+    objectId: text('object_id'),
+    sessionId: text('session_id'),
+    metadata: jsonb('metadata').$type<AuditMetadata>().notNull(),
+  },
+  (table) => [
+    index('audit_logs_board_created_idx').on(table.boardId, table.createdAt),
+    index('audit_logs_actor_created_idx').on(table.actor, table.createdAt),
+  ],
 );
