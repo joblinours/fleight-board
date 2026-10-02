@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { type BoardCommit, MemoryBoardStore } from './store';
 import { createNetwork, rect, sorted, type TestClient } from './test-network';
 import { createRandom } from './test-random';
 
@@ -153,4 +154,123 @@ describe('reconnexion', () => {
       }
     }
   });
+
+  it('ignore les opérations diffusées en retard, déjà incluses dans l’état reçu', async () => {
+    // Stockage dont on libère les enregistrements un par un.
+    const store = new MemoryBoardStore();
+    const waiting: Array<() => void> = [];
+    let gated = false;
+    const slow = {
+      load: (boardId: string) => store.load(boardId),
+      commit: async (boardId: string, commit: BoardCommit) => {
+        if (gated) await new Promise<void>((resolve) => waiting.push(resolve));
+        await store.commit(boardId, commit);
+      },
+    };
+    const network = createNetwork('board', slow);
+    const alice = network.connect('alice');
+    const bob = network.connect('bob');
+    await network.settle();
+    alice.client.applyLocal([{ kind: 'create', object: rect('a') }]);
+    await network.settle();
+    gated = true;
+    const send = async (
+      client: TestClient,
+      operations: Parameters<TestClient['client']['applyLocal']>[0],
+    ) => {
+      client.client.applyLocal(operations);
+      client.tick();
+      client.upload();
+      await microtasks();
+    };
+
+    // Bob crée « c » (1er enregistrement, bloqué) puis déplace « a » (en file).
+    await send(bob, [{ kind: 'create', object: rect('c') }]);
+    await send(bob, [{ kind: 'update', id: 'a', patch: { x: 10 } }]);
+    // Alice se reconnecte : l'état reçu contient déjà les deux lots de Bob.
+    alice.goOffline();
+    alice.goOnline();
+    alice.upload();
+    await microtasks();
+    alice.download();
+    // Elle déplace « a » à son tour, en connaissance de cause.
+    await send(alice, [{ kind: 'update', id: 'a', patch: { x: 20 } }]);
+
+    // La création de « c » est enfin diffusée : déjà connue d'Alice.
+    waiting.shift()?.();
+    await microtasks();
+    alice.download();
+    alice.upload();
+    await microtasks();
+    alice.download();
+    // Puis le déplacement de Bob, plus ancien que l'état d'Alice.
+    gated = false;
+    waiting.shift()?.();
+    await network.settle();
+
+    expect(await network.serverObjects()).toEqual([{ ...rect('a'), x: 20 }, rect('c')]);
+    expect(objects(alice)).toEqual([{ ...rect('a'), x: 20 }, rect('c')]);
+    expect(objects(bob)).toEqual([{ ...rect('a'), x: 20 }, rect('c')]);
+  });
+
+  it('ne réapplique pas sur un état complet un lot qu’il inclut déjà', async () => {
+    const store = new MemoryBoardStore();
+    let release = () => {};
+    let gate: Promise<void> | undefined;
+    const slow = {
+      load: (boardId: string) => store.load(boardId),
+      commit: async (boardId: string, commit: BoardCommit) => {
+        await gate;
+        await store.commit(boardId, commit);
+      },
+    };
+    const network = createNetwork('board', slow);
+    const alice = network.connect('alice');
+    const bob = network.connect('bob');
+    await network.settle();
+    alice.client.applyLocal([
+      { kind: 'create', object: rect('a') },
+      { kind: 'create', object: rect('b', 200) },
+    ]);
+    await network.settle();
+    bob.client.lock(['b']);
+    await network.settle();
+    gate = new Promise<void>((resolve) => (release = resolve));
+    const send = async (
+      client: TestClient,
+      operations: Parameters<TestClient['client']['applyLocal']>[0],
+    ) => {
+      client.client.applyLocal(operations);
+      client.tick();
+      client.upload();
+      await microtasks();
+    };
+
+    // Alice déplace « a » : appliqué par le serveur, pas encore confirmé.
+    await send(alice, [{ kind: 'update', id: 'a', patch: { x: 5 } }]);
+    // Bob le voit (reconnexion) et le déplace à son tour.
+    bob.goOffline();
+    bob.goOnline();
+    bob.upload();
+    await microtasks();
+    bob.download();
+    await send(bob, [{ kind: 'update', id: 'a', patch: { x: 7 } }]);
+    // Alice touche « b », verrouillé par Bob : refus, puis état complet (x: 7).
+    await send(alice, [{ kind: 'update', id: 'b', patch: { x: 1 } }]);
+    alice.download();
+    alice.upload();
+    await microtasks();
+    alice.download();
+    expect(alice.document.get('a')).toMatchObject({ x: 7 });
+
+    release();
+    await network.settle();
+    expect(await network.serverObjects()).toEqual([{ ...rect('a'), x: 7 }, rect('b', 200)]);
+    expect(objects(alice)).toEqual([{ ...rect('a'), x: 7 }, rect('b', 200)]);
+    expect(objects(bob)).toEqual([{ ...rect('a'), x: 7 }, rect('b', 200)]);
+  });
 });
+
+async function microtasks() {
+  for (let i = 0; i < 100; i++) await Promise.resolve();
+}

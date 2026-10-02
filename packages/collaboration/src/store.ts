@@ -33,6 +33,27 @@ export type BoardCommit = {
 };
 
 /**
+ * Fusionne des commits consécutifs en un seul, équivalent : dernier état de
+ * chaque objet (mise à jour ou suppression), journal dans l'ordre.
+ */
+export function mergeCommits(commits: readonly BoardCommit[]): BoardCommit {
+  const [first] = commits;
+  if (commits.length === 1 && first) return first;
+  const objects = new Map<string, { object: BoardObject; version: number } | undefined>();
+  const journal: JournalEntry[] = [];
+  let seq = 0;
+  for (const commit of commits) {
+    seq = Math.max(seq, commit.seq);
+    for (const upsert of commit.upserts) objects.set(upsert.object.id, upsert);
+    for (const id of commit.deletes) objects.set(id, undefined);
+    journal.push(...commit.journal);
+  }
+  const upserts = [...objects.values()].filter((upsert) => upsert !== undefined);
+  const deletes = [...objects].filter(([, upsert]) => upsert === undefined).map(([id]) => id);
+  return { seq, upserts, deletes, journal };
+}
+
+/**
  * Stockage durable des boards. Les commits d'un même board arrivent dans
  * l'ordre de leur séquence et ne sont jamais concurrents entre eux.
  * Chaque entrée du journal produit ses entrées d'audit dans le même commit

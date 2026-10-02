@@ -1,7 +1,7 @@
 import type { ServerSessionMessage } from '@fleight/protocol';
 import { describe, expect, it } from 'vitest';
 import { CollaborationHub } from './hub';
-import { type BoardCommit, MemoryBoardStore } from './store';
+import { type BoardCommit, MemoryBoardStore, mergeCommits } from './store';
 import { createNetwork, drain, rect, sorted } from './test-network';
 
 describe('persistance', () => {
@@ -132,5 +132,84 @@ describe('échec de l’enregistrement', () => {
       .receive({ type: 'JOIN', boardId: 'b', name: 'Alice', clientId: 'alice' });
     await drain(hub);
     expect(again[0]).toMatchObject({ type: 'JOINED', snapshot: { seq: 1, objects: [rect('a')] } });
+  });
+});
+
+describe('regroupement des enregistrements', () => {
+  it('enregistre en une transaction les lots arrivés pendant un enregistrement', async () => {
+    const store = new MemoryBoardStore();
+    const commits: BoardCommit[] = [];
+    let release: (() => void) | undefined;
+    const slow = {
+      load: (boardId: string) => store.load(boardId),
+      commit: async (boardId: string, commit: BoardCommit) => {
+        commits.push(commit);
+        // Le premier enregistrement reste en cours jusqu'à `release`.
+        if (commits.length === 1) await new Promise<void>((resolve) => (release = resolve));
+        await store.commit(boardId, commit);
+      },
+    };
+    const hub = new CollaborationHub({ store: slow });
+    const received: ServerSessionMessage[] = [];
+    const connection = hub.open('alice', (message) => received.push(message));
+    connection.receive({ type: 'JOIN', boardId: 'b', name: 'Alice', clientId: 'alice' });
+    const batch = (
+      batchId: string,
+      baseSeq: number,
+      operations: BoardCommit['journal'][0]['operations'],
+    ) => connection.receive({ type: 'OPS', batchId, baseSeq, operations });
+    batch('1', 0, [{ kind: 'create', object: rect('a') }]);
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+    expect(commits).toHaveLength(1);
+    batch('2', 1, [{ kind: 'update', id: 'a', patch: { x: 10 } }]);
+    batch('3', 2, [{ kind: 'create', object: rect('b') }]);
+    batch('4', 3, [{ kind: 'delete', id: 'b' }]);
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+    // Aucun accusé tant que rien n'est enregistré.
+    expect(received.filter(({ type }) => type === 'ACK')).toEqual([]);
+
+    release?.();
+    await drain(hub);
+
+    expect(commits).toHaveLength(2);
+    expect(commits[1]).toMatchObject({
+      seq: 4,
+      upserts: [{ object: { id: 'a', x: 10 }, version: 2 }],
+      deletes: ['b'],
+    });
+    expect(commits[1]?.journal.map(({ seq }) => seq)).toEqual([2, 3, 4]);
+    expect(
+      received.filter(({ type }) => type === 'ACK').map((m) => (m as { batchId: string }).batchId),
+    ).toEqual(['1', '2', '3', '4']);
+    expect((await store.load('b'))?.objects).toEqual([{ ...rect('a'), x: 10 }]);
+  });
+
+  it('fusionne des commits : dernier état de chaque objet, journal dans l’ordre', () => {
+    const entry = (seq: number) => ({ seq, actor: 'alice', operations: [] });
+    expect(
+      mergeCommits([
+        {
+          seq: 1,
+          upserts: [{ object: rect('a'), version: 1 }],
+          deletes: ['x'],
+          journal: [entry(1)],
+        },
+        {
+          seq: 2,
+          upserts: [
+            { object: rect('a', 5), version: 2 },
+            { object: rect('x'), version: 1 },
+          ],
+          deletes: [],
+          journal: [entry(2)],
+        },
+        { seq: 3, upserts: [], deletes: ['a'], journal: [entry(3)] },
+      ]),
+    ).toEqual({
+      seq: 3,
+      upserts: [{ object: rect('x'), version: 1 }],
+      deletes: ['a'],
+      journal: [entry(1), entry(2), entry(3)],
+    });
   });
 });

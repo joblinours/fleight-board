@@ -18,10 +18,13 @@ export { compactOperations, touchedIds } from './compact';
 export { CollaborationHub, type HubConnection, type HubLogger } from './hub';
 export { type AcquireResult, LOCK_TTL_MS, LockTable } from './locks';
 export { InMemoryPubSub, type PubSub, type Unsubscribe } from './pubsub';
+export { SimulatedUser, type SimulationStep } from './simulation';
 export {
   type BoardCommit,
   type BoardStore,
   type JournalEntry,
   MemoryBoardStore,
+  mergeCommits,
   type StoredBoard,
 } from './store';
+export { createRandom } from './test-random';

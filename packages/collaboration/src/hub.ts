@@ -9,7 +9,13 @@ import { BoardRoom } from './board-room';
 import { compactOperations, touchedIds } from './compact';
 import { LockTable } from './locks';
 import { InMemoryPubSub, type PubSub, type Unsubscribe } from './pubsub';
-import { type BoardStore, type JournalEntry, MemoryBoardStore } from './store';
+import {
+  type BoardCommit,
+  type BoardStore,
+  type JournalEntry,
+  MemoryBoardStore,
+  mergeCommits,
+} from './store';
 
 /** Message diffusé aux connexions d'un board ; `exclude` ne le reçoit pas. */
 type Broadcast = { payload: ServerSessionMessage; exclude?: string };
@@ -32,9 +38,16 @@ type LoadedRoom = {
   locks: LockTable;
   /** Enregistrements en cours, chaînés pour respecter l'ordre des séquences. */
   persistence: Promise<void>;
+  /**
+   * Commits en attente du prochain enregistrement : ceux qui arrivent pendant
+   * qu'un enregistrement est en cours partent ensemble, en une transaction.
+   */
+  nextGroup: CommitGroup | undefined;
   /** Le stockage a échoué : le board doit être rechargé. */
   broken: boolean;
 };
+
+type CommitGroup = Array<{ commit: BoardCommit; then: (() => void) | undefined }>;
 
 /** Geste en cours d'une connexion : ses opérations sont journalisées en une fois. */
 type OpenGesture = { id: string; operations: Operation[]; seq: number };
@@ -271,7 +284,7 @@ export class CollaborationHub {
           if (result.duplicate) {
             // Lot renvoyé après une reconnexion, déjà appliqué : on le confirme seulement.
             const seq = result.seq;
-            loaded.persistence = loaded.persistence.then(() =>
+            this.#after(loaded, () =>
               send({ type: 'ACK', batchId: message.batchId, seq, versions: {}, duplicate: true }),
             );
             return;
@@ -377,6 +390,7 @@ export class CollaborationHub {
           participants: new Map<string, Participant>(),
           locks: new LockTable(this.#lockOptions),
           persistence: Promise.resolve(),
+          nextGroup: undefined,
           broken: false,
         };
         if (this.#rooms.get(boardId) === promise) this.#loaded.set(boardId, loaded);
@@ -401,27 +415,40 @@ export class CollaborationHub {
     locked: Record<string, string>,
     unlocked: string[],
   ): void {
-    loaded.persistence = loaded.persistence.then(() =>
+    this.#after(loaded, () =>
       this.#pubsub.publish(channel(boardId), { payload: { type: 'LOCKS', locked, unlocked } }),
     );
   }
 
-  /** Enregistre un commit après les précédents, puis appelle `then`. */
-  #persist(
-    boardId: string,
-    loaded: LoadedRoom,
-    commit: Parameters<BoardStore['commit']>[1],
-    then?: () => void,
-  ): void {
+  /**
+   * Enregistre un commit après les précédents, puis appelle `then`.
+   * Les commits arrivés pendant un enregistrement sont regroupés en une seule
+   * transaction (group commit) : le débit ne dépend plus de la latence de la base.
+   */
+  #persist(boardId: string, loaded: LoadedRoom, commit: BoardCommit, then?: () => void): void {
+    if (loaded.nextGroup) {
+      loaded.nextGroup.push({ commit, then });
+      return;
+    }
+    const group: CommitGroup = [{ commit, then }];
+    loaded.nextGroup = group;
     loaded.persistence = loaded.persistence.then(async () => {
+      if (loaded.nextGroup === group) loaded.nextGroup = undefined;
       if (loaded.broken) return;
       try {
-        await this.#store.commit(boardId, commit);
-        then?.();
+        await this.#store.commit(boardId, mergeCommits(group.map(({ commit }) => commit)));
+        for (const { then } of group) then?.();
       } catch (error) {
         this.#fail(boardId, loaded, error);
       }
     });
+  }
+
+  /** Exécute `action` après les enregistrements déjà demandés (ordre conservé). */
+  #after(loaded: LoadedRoom, action: () => void | Promise<void>): void {
+    // Les commits suivants ne doivent pas rejoindre un groupe qui partirait avant `action`.
+    loaded.nextGroup = undefined;
+    loaded.persistence = loaded.persistence.then(action);
   }
 
   /**

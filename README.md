@@ -312,6 +312,7 @@ TEST_DATABASE_URL=postgres://fleight:fleight@localhost:5432/fleight pnpm test
 | `pnpm test` | Lance les tests (Vitest) |
 | `pnpm build` | Build de production |
 | `pnpm db:up` / `pnpm db:down` | Démarre / arrête PostgreSQL |
+| `pnpm load` | Test de charge contre l'API lancée : utilisateurs simulés sur le vrai WebSocket, latences et convergence (`--users 2,5,20,50 --duration 30 --board <nom>`) |
 
 ### Endpoints de l'API
 

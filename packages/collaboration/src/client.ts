@@ -101,6 +101,12 @@ export class CollaborationClient {
   #rejected: { count: number; code: RejectMessage['code'] } | undefined;
   /** Une resynchronisation est demandée sur la connexion courante. */
   #syncRequested = false;
+  /**
+   * Pour chaque demande de resynchronisation en cours, les lots déjà envoyés à ce
+   * moment : le serveur traite les messages d'une connexion dans l'ordre, l'état
+   * complet qu'il renverra les inclut donc déjà (ou ils auront été refusés).
+   */
+  #syncMarks: Array<Set<string>> = [];
 
   constructor(options: CollaborationClientOptions) {
     this.#options = options;
@@ -151,6 +157,7 @@ export class CollaborationClient {
     this.#transport = undefined;
     // Une demande de resynchronisation en cours est perdue avec la connexion.
     this.#syncRequested = false;
+    this.#syncMarks = [];
     this.#setStatus('closed');
   }
 
@@ -315,17 +322,27 @@ export class CollaborationClient {
         this.#loadSnapshot(message.snapshot);
         // L'état complet vient d'être reçu : les refus antérieurs sont résolus.
         this.#syncRequested = false;
+        this.#syncMarks = [];
         this.#reportRejections();
         this.#participants = message.participants;
         this.#options.onParticipants?.(this.#participants);
         this.#setStatus('joined');
         this.#resendPending();
         break;
-      case 'SNAPSHOT':
+      case 'SNAPSHOT': {
+        // Les lots envoyés avant la demande sont déjà dans cet état : les réappliquer
+        // par-dessus écraserait les modifications plus récentes des autres.
+        const included = this.#syncMarks.shift();
+        if (included) {
+          this.#pending = this.#pending.filter(
+            ({ batchId }) => batchId === undefined || !included.has(batchId),
+          );
+        }
         this.#loadSnapshot(message.snapshot);
         this.#syncRequested = false;
         this.#reportRejections();
         break;
+      }
       case 'ACK': {
         this.#pending = this.#pending.filter(({ batchId }) => batchId !== message.batchId);
         this.#notifyPending();
@@ -333,10 +350,13 @@ export class CollaborationClient {
         // plus récentes. L'état du serveur fait foi.
         if (message.duplicate && !this.#syncRequested) {
           this.#syncRequested = true;
-          this.#send({ type: 'SYNC_REQUEST' });
+          this.#requestSync();
         }
-        this.#seq = Math.max(this.#seq, message.seq);
-        this.#storeVersions(message.versions);
+        // Accusé d'un lot déjà inclus dans un état complet plus récent : ses versions sont dépassées.
+        if (message.seq > this.#seq) {
+          this.#seq = message.seq;
+          this.#storeVersions(message.versions);
+        }
         break;
       }
       case 'REJECT': {
@@ -345,7 +365,7 @@ export class CollaborationClient {
         this.#notifyPending();
         if (!this.#syncRequested) {
           this.#syncRequested = true;
-          this.#send({ type: 'SYNC_REQUEST' });
+          this.#requestSync();
         }
         this.#rejected = {
           count: (this.#rejected?.count ?? 0) + 1,
@@ -353,11 +373,18 @@ export class CollaborationClient {
         };
         break;
       }
-      case 'LOCKS':
+      case 'LOCKS': {
         for (const id of message.unlocked) this.#locks.delete(id);
         for (const [id, holder] of Object.entries(message.locked)) this.#locks.set(id, holder);
         this.#options.onLocks?.(this.#locks);
+        // Verrou accordé à une demande dont un refus antérieur, arrivé entre-temps,
+        // a fait abandonner l'objet : on le rend aussitôt plutôt que d'attendre son expiration.
+        const unwanted = Object.entries(message.locked)
+          .filter(([id, holder]) => holder === this.#connectionId && !this.#held.has(id))
+          .map(([id]) => id);
+        if (unwanted.length) this.#send({ type: 'UNLOCK', objectIds: unwanted });
         break;
+      }
       case 'LOCK_DENIED':
         for (const id of message.objectIds) {
           this.#held.delete(id);
@@ -367,8 +394,11 @@ export class CollaborationClient {
         this.#options.onLockDenied?.(message.objectIds, message.holder);
         break;
       case 'OPS':
+        // Lot diffusé après un état complet (JOINED, SNAPSHOT) qui l'inclut déjà :
+        // le réappliquer ramènerait les objets en arrière.
+        if (message.seq <= this.#seq) break;
         this.#applyRemote(message.operations);
-        this.#seq = Math.max(this.#seq, message.seq);
+        this.#seq = message.seq;
         this.#storeVersions(message.versions);
         break;
       case 'PARTICIPANT_JOINED':
@@ -447,10 +477,19 @@ export class CollaborationClient {
   }
 
   /** Divergence détectée : on repart de l'état du serveur. */
+  #requestSync(): void {
+    // Hors connexion, la demande serait perdue : l'état complet viendra avec JOINED.
+    if (!this.#transport) return;
+    this.#syncMarks.push(
+      new Set(this.#pending.flatMap(({ batchId }) => (batchId === undefined ? [] : [batchId]))),
+    );
+    this.#send({ type: 'SYNC_REQUEST' });
+  }
+
   #resync(): void {
     this.#pending = [];
     this.#notifyPending();
-    this.#send({ type: 'SYNC_REQUEST' });
+    this.#requestSync();
   }
 
   #unsent(): PendingEntry[] {
