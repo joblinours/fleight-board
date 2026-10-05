@@ -505,9 +505,12 @@ export function BoardPage({
             {guestName ? (
               <span className="board-guest-badge">Invité</span>
             ) : (
-              <button type="button" onClick={() => setShowMembers(!showMembers)}>
-                Membres{accessRequests > 0 ? ` (${accessRequests})` : ''}
-              </button>
+              <span className="board-role-actions">
+                {can(role, 'board.audit') && <a href={`#/audit/${boardId}`}>Audit</a>}
+                <button type="button" onClick={() => setShowMembers(!showMembers)}>
+                  Membres{accessRequests > 0 ? ` (${accessRequests})` : ''}
+                </button>
+              </span>
             )}
           </span>
           <label className="board-presence">

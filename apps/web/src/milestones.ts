@@ -302,4 +302,19 @@ export const MILESTONES: Milestone[] = [
       'Taper 10 codes inexistants : le 11e est refusé quelques minutes (cooldown).',
     ],
   },
+  {
+    id: 'M1.9',
+    title: 'Audit (interface)',
+    summary: 'Audit d’un board filtrable et exportable ; audit global pour l’Admin.',
+    href: '#/admin/audit',
+    linkLabel: 'Audit global (Admin)',
+    needsApi: true,
+    steps: [
+      'Dans un board (Owner ou Co-owner) : lien « Audit » à côté de « Membres ».',
+      'Filtrer par famille (objets, board, membres et accès), recherche, période ; « Suivre en direct ».',
+      'Cliquer sur un auteur ou un objet pour filtrer dessus ; « Entrées plus anciennes » pour paginer.',
+      '« Exporter (CSV) » : le fichier s’ouvre dans un tableur.',
+      'Admin : « Audit global » (page Administration), périmètre comptes / boards, lien vers chaque board.',
+    ],
+  },
 ];

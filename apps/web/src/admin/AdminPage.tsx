@@ -42,7 +42,9 @@ export function AdminPage() {
     try {
       const [list, audit] = await Promise.all([
         api('/admin/users').then((data) => UsersResponseSchema.parse(data).users),
-        api('/admin/audit?limit=50').then((data) => AuditLogResponseSchema.parse(data).entries),
+        api('/admin/audit?limit=50&scope=accounts').then(
+          (data) => AuditLogResponseSchema.parse(data).entries,
+        ),
       ]);
       setUsers(list);
       setEvents(audit);
@@ -234,6 +236,10 @@ export function AdminPage() {
 
       <section>
         <h2>Événements de compte récents</h2>
+        <p>
+          <a href="#/admin/audit">Audit global</a> : comptes et tous les boards, filtrable et
+          exportable.
+        </p>
         <div className="admin-scroll">
           <table>
             <tbody>

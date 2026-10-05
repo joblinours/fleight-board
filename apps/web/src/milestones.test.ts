@@ -16,7 +16,7 @@ describe('MILESTONES', () => {
   it('pointe vers des routes existantes et décrit au moins une étape', () => {
     for (const milestone of MILESTONES) {
       expect(milestone.href).toMatch(
-        /^#\/(bench|ink|admin|account|board(\/[A-Za-z0-9_-]+)?|audit\/[A-Za-z0-9_-]+)?$/,
+        /^#\/(bench|ink|admin(\/audit)?|account|board(\/[A-Za-z0-9_-]+)?|audit\/[A-Za-z0-9_-]+)?$/,
       );
       expect(milestone.steps.length).toBeGreaterThan(0);
     }

@@ -7,7 +7,7 @@ import { SESSION_COOKIE } from '../auth/routes';
 import { BoardService } from '../boards/board-service';
 import { connectDatabase, type Database } from '../database';
 import { createTestBoard } from '../test-helpers';
-import { PostgresAuditLog } from './audit-log';
+import { PostgresAuditLog, writeAuditEvent } from './audit-log';
 import { PostgresBoardStore } from './board-store';
 import { users } from './schema';
 
@@ -77,7 +77,7 @@ describe.skipIf(!url)('audit_logs', () => {
     // Commit sans journal (lots d'un geste en cours) : pas d'audit.
     await store.commit(boardId, { seq: 4, upserts: [], deletes: [], journal: [] });
 
-    const entries = await audit.list(boardId, 10);
+    const { entries } = await audit.query({ boardId, limit: 10 });
     expect(entries.map(({ id: _id, createdAt: _createdAt, ...entry }) => entry)).toEqual([
       {
         actor: 'alice',
@@ -108,7 +108,7 @@ describe.skipIf(!url)('audit_logs', () => {
       },
     ]);
     expect(Date.parse(entries[0]?.createdAt ?? '')).not.toBeNaN();
-    expect(await audit.list(boardId, 1)).toHaveLength(1);
+    expect((await audit.query({ boardId, limit: 1 })).entries).toHaveLength(1);
   });
 
   it('expose l’audit d’un board en HTTP', async () => {
@@ -158,6 +158,99 @@ describe.skipIf(!url)('audit_logs', () => {
       cookies,
     });
     expect(invalid.statusCode).toBe(400);
+
+    // Filtres en paramètres de requête ; audit global de l'Admin.
+    const filtered = await app.inject({
+      method: 'GET',
+      url: `/boards/${boardId}/audit?category=access`,
+      cookies,
+    });
+    expect(filtered.json()).toEqual({ entries: [], nextBefore: null });
+    const global = await app.inject({
+      method: 'GET',
+      url: `/admin/audit?scope=boards&boardId=${boardId}&q=alice`,
+      cookies,
+    });
+    expect(global.json().entries).toMatchObject([{ boardId, action: 'object.create' }]);
+    expect(
+      (await app.inject({ method: 'GET', url: '/admin/audit?scope=tout', cookies })).statusCode,
+    ).toBe(400);
     await app.close();
+  });
+  it('filtre par famille, auteur, recherche, période ; pagine vers les plus anciennes', async () => {
+    const boardId = `audit-${createId()}`;
+    await createTestBoard(database.db, boardId);
+    await store.commit(boardId, {
+      seq: 3,
+      upserts: [
+        { object: rectangle('a'), version: 1 },
+        { object: rectangle('b'), version: 1 },
+      ],
+      deletes: [],
+      journal: [
+        {
+          seq: 1,
+          actor: 'u-alice',
+          actorType: 'user',
+          actorName: 'Alice Martin',
+          operations: [{ kind: 'create', object: rectangle('a') }],
+        },
+        {
+          seq: 2,
+          actor: 'u-bob',
+          actorType: 'user',
+          actorName: 'Bob',
+          operations: [{ kind: 'create', object: rectangle('b') }],
+        },
+        {
+          seq: 3,
+          actor: 'u-alice',
+          actorType: 'user',
+          actorName: 'Alice Martin',
+          operations: [{ kind: 'update', id: 'b', patch: { x: 3 } }],
+        },
+      ],
+    });
+    await writeAuditEvent(database.db, {
+      actor: 'u-alice',
+      actorType: 'user',
+      action: 'board.member.add',
+      boardId,
+      metadata: { actorName: 'Alice Martin', member: 'u-bob' },
+    });
+
+    const all = await audit.query({ boardId, limit: 10 });
+    expect(all.entries).toHaveLength(4);
+    expect(all.nextBefore).toBeNull();
+
+    const access = await audit.query({ boardId, limit: 10, category: 'access' });
+    expect(access.entries.map(({ action }) => action)).toEqual(['board.member.add']);
+    const objects = await audit.query({
+      boardId,
+      limit: 10,
+      category: 'objects',
+      actor: 'u-alice',
+    });
+    expect(objects.entries.map(({ action }) => action)).toEqual(['object.update', 'object.create']);
+    // Recherche insensible à la casse dans le nom, l'auteur ou l'objet ; jokers pris littéralement.
+    expect((await audit.query({ boardId, limit: 10, q: 'martin' })).entries).toHaveLength(3);
+    expect((await audit.query({ boardId, limit: 10, q: '%' })).entries).toHaveLength(0);
+    expect((await audit.query({ boardId, limit: 10, objectId: 'b' })).entries).toHaveLength(2);
+    expect((await audit.query({ boardId, limit: 10, from: '2100-01-01' })).entries).toHaveLength(0);
+    expect((await audit.query({ boardId, limit: 10, to: '2000-01-01' })).entries).toHaveLength(0);
+
+    // Pages de 3, puis la suivante à partir du curseur.
+    const first = await audit.query({ boardId, limit: 3 });
+    expect(first.entries).toHaveLength(3);
+    expect(first.nextBefore).toBe(first.entries[2]?.id);
+    const second = await audit.query({ boardId, limit: 3, before: first.nextBefore ?? 0 });
+    expect(second.entries.map(({ action }) => action)).toEqual(['object.create']);
+    expect(second.nextBefore).toBeNull();
+
+    // Hors board : événements de compte seulement ; tous les boards : aucun événement de compte.
+    const accounts = await audit.query({ limit: 50, scope: 'accounts' });
+    expect(accounts.entries.every(({ boardId: id }) => id === null)).toBe(true);
+    const boards = await audit.query({ limit: 50, scope: 'boards' });
+    expect(boards.entries.every(({ boardId: id }) => id !== null)).toBe(true);
   });
 });
