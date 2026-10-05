@@ -6,6 +6,9 @@ import {
 } from '@fleight/protocol';
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { ApiRequestError, api } from '../auth/api';
+import { AppShell, PageHeader } from '../layout/AppShell';
+import { Avatar, Badge, Button, EmptyState, Spinner } from '../ui/components';
+import { Icon } from '../ui/Icon';
 
 /** Rafraîchissement de la première page en mode « suivre en direct ». */
 const REFRESH_MS = 3000;
@@ -260,220 +263,265 @@ function AuditView({ boardId }: { boardId?: string }) {
   };
   const active = JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS);
 
-  return (
-    <main className="audit">
-      <nav>
-        <a href="#/">Accueil</a>
-        {boardId ? (
-          <a href={`#/board/${boardId}`}>Ouvrir le board</a>
-        ) : (
-          <a href="#/admin">Administration</a>
-        )}
-      </nav>
-      <h1>{title}</h1>
-      <p className="audit-help">
-        Une ligne par opération finale (un tracé ou un déplacement = une ligne), annulations
-        comprises, et par événement de gestion (membres, accès, réglages
-        {admin ? ', comptes' : ''}). L’audit n’est jamais modifié ni annulé.
-      </p>
+  const categories = (Object.keys(CATEGORY_LABELS) as AuditCategory[]).filter(
+    (category) => admin || category !== 'accounts',
+  );
 
-      <form className="audit-filters" onSubmit={apply}>
-        {admin && (
-          <>
-            <label className="audit-filter">
-              Périmètre
+  return (
+    <AppShell>
+      <div className="page">
+        <PageHeader
+          title={title}
+          subtitle={
+            <>
+              Une ligne par opération finale (un tracé ou un déplacement = une ligne), annulations
+              comprises, et par événement de gestion (membres, accès, réglages
+              {admin ? ', comptes' : ''}). L’audit n’est jamais modifié ni annulé.
+            </>
+          }
+          {...(admin ? {} : { back: { href: '#/', label: 'Tableaux' } })}
+          actions={
+            <>
+              {boardId && (
+                <a className="btn btn-secondary" href={`#/board/${boardId}`}>
+                  <Icon name="pencilLine" size={16} />
+                  Ouvrir le tableau
+                </a>
+              )}
+              <Button
+                icon="download"
+                disabled={!page?.entries.length}
+                onClick={() =>
+                  page && exportCsv(page.entries, admin ? 'audit' : `audit-${boardId}`)
+                }
+              >
+                Exporter (CSV)
+              </Button>
+            </>
+          }
+        />
+
+        <div className="toolbar-row">
+          <div className="tabs" role="tablist">
+            {(['', ...categories] as Array<Filters['category']>).map((category) => (
+              <button
+                key={category || 'all'}
+                type="button"
+                role="tab"
+                aria-selected={filters.category === category}
+                className={`tab${filters.category === category ? ' active' : ''}`}
+                onClick={() => refine({ category })}
+              >
+                {category ? CATEGORY_LABELS[category] : 'Tout'}
+              </button>
+            ))}
+          </div>
+          <label className="status-pill live-toggle">
+            <input
+              type="checkbox"
+              checked={live}
+              onChange={(event) => setLive(event.target.checked)}
+            />
+            <span className={`status-dot${live ? ' live' : ''}`} />
+            Suivre en direct
+          </label>
+        </div>
+
+        <form className="card audit-filters" onSubmit={apply}>
+          <div className="search">
+            <Icon name="search" size={16} />
+            <input
+              className="input input-sm"
+              type="search"
+              value={draft.q}
+              placeholder="Rechercher un auteur, un objet…"
+              onChange={(event) => setDraft({ ...draft, q: event.target.value })}
+            />
+          </div>
+          {admin && (
+            <>
               <select
+                className="select select-sm"
+                aria-label="Périmètre"
                 value={draft.scope}
                 onChange={(event) =>
                   setDraft({ ...draft, scope: event.target.value as Filters['scope'] })
                 }
               >
-                <option value="all">Tout</option>
-                <option value="boards">Boards</option>
+                <option value="all">Tous les périmètres</option>
+                <option value="boards">Tableaux</option>
                 <option value="accounts">Comptes</option>
               </select>
-            </label>
-            <label className="audit-filter">
-              Board
               <input
+                className="input input-sm"
+                aria-label="Tableau"
                 value={draft.boardId}
-                placeholder="identifiant"
+                placeholder="Identifiant de tableau"
                 onChange={(event) => setDraft({ ...draft, boardId: event.target.value })}
               />
-            </label>
-          </>
-        )}
-        <label className="audit-filter">
-          Famille
-          <select
-            value={draft.category}
-            onChange={(event) =>
-              setDraft({ ...draft, category: event.target.value as Filters['category'] })
-            }
-          >
-            <option value="">Toutes</option>
-            {(Object.keys(CATEGORY_LABELS) as AuditCategory[])
-              .filter((category) => admin || category !== 'accounts')
-              .map((category) => (
-                <option key={category} value={category}>
-                  {CATEGORY_LABELS[category]}
-                </option>
-              ))}
-          </select>
-        </label>
-        <label className="audit-filter">
-          Recherche
-          <input
-            type="search"
-            value={draft.q}
-            placeholder="auteur, objet…"
-            onChange={(event) => setDraft({ ...draft, q: event.target.value })}
-          />
-        </label>
-        <label className="audit-filter">
-          Du
-          <input
-            type="date"
-            value={draft.from}
-            onChange={(event) => setDraft({ ...draft, from: event.target.value })}
-          />
-        </label>
-        <label className="audit-filter">
-          Au
-          <input
-            type="date"
-            value={draft.to}
-            onChange={(event) => setDraft({ ...draft, to: event.target.value })}
-          />
-        </label>
-        <button type="submit">Filtrer</button>
-        {active && (
-          <button
-            type="button"
-            onClick={() => {
-              setDraft(EMPTY_FILTERS);
-              setFilters(EMPTY_FILTERS);
-            }}
-          >
-            Réinitialiser
-          </button>
-        )}
-      </form>
+            </>
+          )}
+          <label className="audit-date">
+            Du
+            <input
+              className="input input-sm"
+              type="date"
+              value={draft.from}
+              onChange={(event) => setDraft({ ...draft, from: event.target.value })}
+            />
+          </label>
+          <label className="audit-date">
+            Au
+            <input
+              className="input input-sm"
+              type="date"
+              value={draft.to}
+              onChange={(event) => setDraft({ ...draft, to: event.target.value })}
+            />
+          </label>
+          <Button type="submit" size="sm" variant="primary" icon="filter">
+            Filtrer
+          </Button>
+          {active && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon="x"
+              onClick={() => {
+                setDraft(EMPTY_FILTERS);
+                setFilters(EMPTY_FILTERS);
+              }}
+            >
+              Réinitialiser
+            </Button>
+          )}
+        </form>
 
-      <div className="audit-toolbar">
         {(filters.actor || filters.objectId) && (
-          <span className="audit-chips">
+          <div className="chips">
             {filters.actor && (
-              <button type="button" onClick={() => refine({ actor: '' })}>
-                auteur {shortId(filters.actor)} ×
+              <button type="button" className="chip" onClick={() => refine({ actor: '' })}>
+                <Icon name="user" size={14} />
+                Auteur {shortId(filters.actor)}
+                <Icon name="x" size={14} />
               </button>
             )}
             {filters.objectId && (
-              <button type="button" onClick={() => refine({ objectId: '' })}>
-                objet {shortId(filters.objectId)} ×
+              <button type="button" className="chip" onClick={() => refine({ objectId: '' })}>
+                <Icon name="hash" size={14} />
+                Objet {shortId(filters.objectId)}
+                <Icon name="x" size={14} />
               </button>
             )}
-          </span>
+          </div>
         )}
-        <label>
-          <input
-            type="checkbox"
-            checked={live}
-            onChange={(event) => setLive(event.target.checked)}
-          />{' '}
-          Suivre en direct
-        </label>
-        <button
-          type="button"
-          disabled={!page?.entries.length}
-          onClick={() => page && exportCsv(page.entries, admin ? 'audit' : `audit-${boardId}`)}
-        >
-          Exporter (CSV)
-        </button>
-      </div>
 
-      {error && <p className="audit-error">{error}</p>}
-      {!page && !error && <p>Chargement…</p>}
-      {page && page.entries.length === 0 && (
-        <p>Aucune entrée{active ? ' pour ces filtres' : ''}.</p>
-      )}
-      {page && page.entries.length > 0 && (
-        <div className="audit-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Auteur</th>
-                <th>Action</th>
-                {admin && <th>Board</th>}
-                <th>Objet</th>
-                <th>Détails</th>
-              </tr>
-            </thead>
-            <tbody>
-              {page.entries.map((entry) => (
-                <tr key={entry.id}>
-                  <td>{new Date(entry.createdAt).toLocaleString()}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="audit-link"
-                      title={`Filtrer sur cet auteur (${entry.actor})`}
-                      onClick={() => refine({ actor: entry.actor })}
-                    >
-                      {entry.metadata.actorName ?? shortId(entry.actor)}
-                    </button>
-                    {entry.actorType !== 'user' && (
-                      <span className="audit-actor-type">{ACTOR_TYPES[entry.actorType]}</span>
-                    )}
-                  </td>
-                  <td>
-                    {ACTION_LABELS[entry.action] ?? entry.action}
-                    {entry.metadata.intent && (
-                      <span className={`audit-intent ${entry.metadata.intent}`}>
-                        {INTENTS[entry.metadata.intent]}
-                      </span>
-                    )}
-                  </td>
-                  {admin && (
-                    <td>
-                      {entry.boardId ? (
-                        <a href={`#/audit/${entry.boardId}`}>{shortId(entry.boardId)}</a>
-                      ) : (
-                        '—'
-                      )}
+        {error && <div className="alert alert-error">{error}</div>}
+        {!page && !error && (
+          <div className="page-loading">
+            <Spinner />
+          </div>
+        )}
+        {page && page.entries.length === 0 && (
+          <EmptyState icon="history" title="Aucune entrée">
+            {active ? 'Aucune entrée ne correspond à ces filtres.' : 'L’audit est encore vide.'}
+          </EmptyState>
+        )}
+        {page && page.entries.length > 0 && (
+          <div className="table-wrap">
+            <table className="table audit-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Auteur</th>
+                  <th>Action</th>
+                  {admin && <th>Tableau</th>}
+                  <th>Objet</th>
+                  <th>Détails</th>
+                </tr>
+              </thead>
+              <tbody>
+                {page.entries.map((entry) => (
+                  <tr key={entry.id}>
+                    <td className="audit-date-cell">
+                      {new Date(entry.createdAt).toLocaleString()}
                     </td>
-                  )}
-                  <td>
-                    {entry.objectId ? (
+                    <td>
                       <button
                         type="button"
                         className="audit-link"
-                        title={`Filtrer sur cet objet (${entry.objectId})`}
-                        onClick={() => refine({ objectId: entry.objectId ?? '' })}
+                        title={`Filtrer sur cet auteur (${entry.actor})`}
+                        onClick={() => refine({ actor: entry.actor })}
                       >
-                        {shortId(entry.objectId)}
+                        <Avatar name={entry.metadata.actorName ?? entry.actor} size="sm" />
+                        {entry.metadata.actorName ?? shortId(entry.actor)}
                       </button>
-                    ) : (
-                      '—'
+                      {entry.actorType !== 'user' && <Badge>{ACTOR_TYPES[entry.actorType]}</Badge>}
+                    </td>
+                    <td>
+                      <span className="audit-action">
+                        <span className={`activity-dot cat-${categoryOf(entry.action)}`} />
+                        {ACTION_LABELS[entry.action] ?? entry.action}
+                        {entry.metadata.intent && (
+                          <Badge tone={entry.metadata.intent === 'undo' ? 'warning' : 'primary'}>
+                            {INTENTS[entry.metadata.intent]}
+                          </Badge>
+                        )}
+                      </span>
+                    </td>
+                    {admin && (
+                      <td>
+                        {entry.boardId ? (
+                          <a href={`#/audit/${entry.boardId}`}>{shortId(entry.boardId)}</a>
+                        ) : (
+                          <span className="subtle">—</span>
+                        )}
+                      </td>
                     )}
-                  </td>
-                  <td>{details(entry)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {page?.nextBefore && (
-        <p>
-          <button type="button" disabled={loadingMore} onClick={() => void loadMore()}>
-            {loadingMore ? 'Chargement…' : 'Entrées plus anciennes'}
-          </button>
-        </p>
-      )}
-    </main>
+                    <td>
+                      {entry.objectId ? (
+                        <button
+                          type="button"
+                          className="audit-link mono"
+                          title={`Filtrer sur cet objet (${entry.objectId})`}
+                          onClick={() => refine({ objectId: entry.objectId ?? '' })}
+                        >
+                          {shortId(entry.objectId)}
+                        </button>
+                      ) : (
+                        <span className="subtle">—</span>
+                      )}
+                    </td>
+                    <td className="muted">{details(entry)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {page?.nextBefore && (
+          <div className="audit-more">
+            <Button disabled={loadingMore} onClick={() => void loadMore()}>
+              {loadingMore ? 'Chargement…' : 'Entrées plus anciennes'}
+            </Button>
+          </div>
+        )}
+      </div>
+    </AppShell>
   );
+}
+
+/** Famille d'une action, pour la pastille de couleur. */
+function categoryOf(action: AuditRecord['action']): string {
+  if (action.startsWith('object.')) return 'objects';
+  if (action.startsWith('auth.') || action.startsWith('user.')) return 'accounts';
+  if (
+    action.startsWith('board.member') ||
+    action.startsWith('board.guest') ||
+    action.startsWith('board.access')
+  )
+    return 'access';
+  return 'board';
 }
 
 /** Audit d'un board : Co-owners, propriétaire et Admins. */

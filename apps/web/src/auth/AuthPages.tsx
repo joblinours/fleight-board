@@ -5,6 +5,9 @@ import {
 } from '@fleight/protocol';
 import { type FormEvent, type ReactNode, useState } from 'react';
 import type { ZodType } from 'zod';
+import { AppShell, Logo, PageHeader } from '../layout/AppShell';
+import { Avatar, Badge, Button } from '../ui/components';
+import { Icon } from '../ui/Icon';
 import { ApiRequestError, api } from './api';
 import { logout, setSessionUser, useSession } from './session';
 
@@ -69,33 +72,60 @@ function Field({
 } & React.InputHTMLAttributes<HTMLInputElement>) {
   const invalid = error?.field === name;
   return (
-    <label className={`auth-field${invalid ? ' invalid' : ''}`}>
-      <span>{label}</span>
-      <input name={name} aria-invalid={invalid} {...input} />
-      {hint && <small>{hint}</small>}
+    <label className="field">
+      <span className="field-label">{label}</span>
+      <input className="input" name={name} aria-invalid={invalid} {...input} />
+      {hint && <span className="field-hint">{hint}</span>}
     </label>
   );
 }
 
-function AuthLayout({ title, children }: { title: string; children: ReactNode }) {
+/** Pages d'authentification : panneau de marque à gauche, formulaire à droite. */
+function AuthLayout({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <main className="auth">
-      <div className="auth-card">
-        <p className="auth-brand">
-          <a href="#/">Fleight Board</a>
-        </p>
-        <h1>{title}</h1>
-        {children}
-      </div>
+      <section className="auth-aside">
+        <a href="#/" className="auth-logo">
+          <Logo />
+        </a>
+        <div className="auth-aside-text">
+          <h2>Le whiteboard collaboratif, auto-hébergé.</h2>
+          <p>
+            Dessin libre, schémas et collaboration en temps réel, sur ordinateur comme sur iPad.
+          </p>
+        </div>
+        <p className="auth-aside-foot">© Fleight Board</p>
+      </section>
+      <section className="auth-main">
+        <div className="auth-form">
+          <a href="#/" className="auth-logo-mobile">
+            <Logo />
+          </a>
+          <div className="auth-title">
+            <h1>{title}</h1>
+            {subtitle && <p className="muted">{subtitle}</p>}
+          </div>
+          {children}
+        </div>
+      </section>
     </main>
   );
 }
 
 function ErrorMessage({ error }: { error: FormError | null }) {
   return error ? (
-    <p className="auth-error" role="alert">
+    <div className="alert alert-error" role="alert">
+      <Icon name="x" size={16} />
       {error.message}
-    </p>
+    </div>
   ) : null;
 }
 
@@ -111,8 +141,14 @@ export function LoginPage() {
   });
 
   return (
-    <AuthLayout title="Connexion">
-      <form onSubmit={(event) => form.onSubmit(event, { identifier, password })}>
+    <AuthLayout
+      title="Bon retour parmi nous"
+      subtitle="Connectez-vous pour retrouver vos tableaux."
+    >
+      <form
+        className="form-stack"
+        onSubmit={(event) => form.onSubmit(event, { identifier, password })}
+      >
         <Field
           label="Nom d’utilisateur ou e-mail"
           name="identifier"
@@ -134,12 +170,15 @@ export function LoginPage() {
           onChange={(event) => setPassword(event.target.value)}
         />
         <ErrorMessage error={form.error} />
-        <button type="submit" disabled={form.busy}>
+        <Button type="submit" variant="primary" size="lg" block disabled={form.busy}>
           {form.busy ? 'Connexion…' : 'Se connecter'}
-        </button>
+        </Button>
       </form>
       <p className="auth-alt">
         Pas encore de compte ? <a href="#/register">Demander un compte</a>
+      </p>
+      <p className="auth-alt">
+        Invité ? <a href="#/">Rejoindre un tableau avec un code</a>
       </p>
     </AuthLayout>
   );
@@ -164,17 +203,21 @@ export function RegisterPage() {
   if (sent) {
     return (
       <AuthLayout title="Demande envoyée">
-        <p>Un Admin doit valider votre compte. Vous pourrez ensuite vous connecter.</p>
-        <p className="auth-alt">
-          <a href="#/login">Retour à la connexion</a>
-        </p>
+        <div className="alert alert-success">
+          <Icon name="check" size={16} />
+          Un Admin doit valider votre compte. Vous pourrez ensuite vous connecter.
+        </div>
+        <a href="#/login" className="btn btn-secondary btn-lg btn-block">
+          Retour à la connexion
+        </a>
       </AuthLayout>
     );
   }
 
   return (
-    <AuthLayout title="Demander un compte">
+    <AuthLayout title="Demander un compte" subtitle="Un administrateur validera votre demande.">
       <form
+        className="form-stack"
         onSubmit={(event) => {
           if (values.password !== values.confirm) {
             event.preventDefault();
@@ -236,9 +279,9 @@ export function RegisterPage() {
           onChange={update('confirm')}
         />
         <ErrorMessage error={form.error} />
-        <button type="submit" disabled={form.busy}>
+        <Button type="submit" variant="primary" size="lg" block disabled={form.busy}>
           Envoyer la demande
-        </button>
+        </Button>
       </form>
       <p className="auth-alt">
         Déjà un compte ? <a href="#/login">Se connecter</a>
@@ -263,88 +306,115 @@ export function AccountPage() {
   const update = (name: keyof typeof values) => (event: React.ChangeEvent<HTMLInputElement>) =>
     setValues({ ...values, [name]: event.target.value });
 
-  return (
-    <AuthLayout title="Mon compte">
-      <dl className="auth-profile">
-        <dt>Nom affiché</dt>
-        <dd>{user.displayName}</dd>
-        <dt>Nom d’utilisateur</dt>
-        <dd>{user.username}</dd>
-        {user.email && (
-          <>
-            <dt>E-mail</dt>
-            <dd>{user.email}</dd>
-          </>
-        )}
-        <dt>Rôle</dt>
-        <dd>{user.role === 'admin' ? 'Admin' : 'Utilisateur'}</dd>
-      </dl>
+  const content = (
+    <div className="page page-narrow">
+      <PageHeader title="Mon compte" subtitle="Profil et sécurité de votre compte." />
+      <section className="card">
+        <div className="card-body profile">
+          <Avatar name={user.displayName} size="lg" />
+          <div>
+            <h2>{user.displayName}</h2>
+            <p className="muted">
+              @{user.username}
+              {user.email && ` · ${user.email}`}
+            </p>
+          </div>
+          <Badge tone={user.role === 'admin' ? 'primary' : undefined}>
+            {user.role === 'admin' ? 'Administrateur' : 'Utilisateur'}
+          </Badge>
+        </div>
+      </section>
 
-      <h2>Changer de mot de passe</h2>
+      <section className="card">
+        <div className="card-body form-stack">
+          <div>
+            <h2>Mot de passe</h2>
+            <p className="muted">Changer de mot de passe ferme vos autres sessions.</p>
+          </div>
+          {user.mustChangePassword && (
+            <div className="alert alert-warning">
+              <Icon name="key" size={16} />
+              Votre mot de passe est temporaire : choisissez-en un nouveau pour continuer.
+            </div>
+          )}
+          {changed && (
+            <div className="alert alert-success">
+              <Icon name="check" size={16} />
+              Mot de passe changé ; vos autres sessions sont fermées.
+            </div>
+          )}
+          <form
+            className="form-stack"
+            onSubmit={(event) => {
+              if (values.newPassword !== values.confirm) {
+                event.preventDefault();
+                form.setError({
+                  message: 'Les mots de passe ne correspondent pas',
+                  field: 'confirm',
+                });
+                return;
+              }
+              void form.onSubmit(event, {
+                currentPassword: values.currentPassword,
+                newPassword: values.newPassword,
+              });
+            }}
+          >
+            <Field
+              label="Mot de passe actuel"
+              name="currentPassword"
+              type="password"
+              error={form.error}
+              value={values.currentPassword}
+              autoComplete="current-password"
+              required
+              onChange={update('currentPassword')}
+            />
+            <div className="form-row">
+              <Field
+                label="Nouveau mot de passe"
+                name="newPassword"
+                type="password"
+                error={form.error}
+                value={values.newPassword}
+                autoComplete="new-password"
+                hint="Au moins 10 caractères"
+                required
+                onChange={update('newPassword')}
+              />
+              <Field
+                label="Confirmation"
+                name="confirm"
+                type="password"
+                error={form.error}
+                value={values.confirm}
+                autoComplete="new-password"
+                required
+                onChange={update('confirm')}
+              />
+            </div>
+            <ErrorMessage error={form.error} />
+            <div>
+              <Button type="submit" variant="primary" disabled={form.busy}>
+                Changer le mot de passe
+              </Button>
+            </div>
+          </form>
+        </div>
+      </section>
       {user.mustChangePassword && (
-        <p className="auth-warning">
-          Votre mot de passe est temporaire : choisissez-en un nouveau pour continuer.
-        </p>
+        <div>
+          <Button icon="logout" onClick={() => void logout()}>
+            Se déconnecter
+          </Button>
+        </div>
       )}
-      {changed && (
-        <p className="auth-success">Mot de passe changé ; vos autres sessions sont fermées.</p>
-      )}
-      <form
-        onSubmit={(event) => {
-          if (values.newPassword !== values.confirm) {
-            event.preventDefault();
-            form.setError({ message: 'Les mots de passe ne correspondent pas', field: 'confirm' });
-            return;
-          }
-          void form.onSubmit(event, {
-            currentPassword: values.currentPassword,
-            newPassword: values.newPassword,
-          });
-        }}
-      >
-        <Field
-          label="Mot de passe actuel"
-          name="currentPassword"
-          type="password"
-          error={form.error}
-          value={values.currentPassword}
-          autoComplete="current-password"
-          required
-          onChange={update('currentPassword')}
-        />
-        <Field
-          label="Nouveau mot de passe"
-          name="newPassword"
-          type="password"
-          error={form.error}
-          value={values.newPassword}
-          autoComplete="new-password"
-          hint="Au moins 10 caractères"
-          required
-          onChange={update('newPassword')}
-        />
-        <Field
-          label="Confirmation"
-          name="confirm"
-          type="password"
-          error={form.error}
-          value={values.confirm}
-          autoComplete="new-password"
-          required
-          onChange={update('confirm')}
-        />
-        <ErrorMessage error={form.error} />
-        <button type="submit" disabled={form.busy}>
-          Changer le mot de passe
-        </button>
-      </form>
-      <p className="auth-alt">
-        {!user.mustChangePassword && <a href="#/">Accueil</a>}
-        {!user.mustChangePassword && ' · '}
-        <button type="button" className="link" onClick={() => void logout()}>
-          Se déconnecter
-        </button>
-      </p>
-    </AuthLayout>
+    </div>
+  );
+  // Mot de passe temporaire : pas de navigation tant qu'il n'est pas changé.
+  return user.mustChangePassword ? (
+    <main className="auth-standalone">{content}</main>
+  ) : (
+    <AppShell>{content}</AppShell>
   );
 }

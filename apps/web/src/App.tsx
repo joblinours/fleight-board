@@ -7,8 +7,9 @@ import { BenchPage } from './bench/BenchPage';
 import { GuestJoinPage, GuestRoute } from './board/AccessPages';
 import { BoardPage } from './board/BoardPage';
 import { BoardRoute, JoinRoute } from './board/BoardRoute';
-import { HomePage } from './HomePage';
+import { HomePage, MilestonesPage } from './HomePage';
 import { InkPage } from './ink/InkPage';
+import { Spinner, ToastRegion } from './ui/components';
 
 /** Route courante, sans les paramètres (`#/login?next=…` → `/login`). */
 function currentRoute(): string {
@@ -49,6 +50,20 @@ export function App() {
     }
   }, [isPublic, session.status, mustChangePassword, route]);
 
+  return (
+    <>
+      <Routes route={route} />
+      <ToastRegion />
+    </>
+  );
+}
+
+/** Page de la route courante. */
+function Routes({ route }: { route: string }) {
+  const session = useSession();
+  const mustChangePassword =
+    session.status === 'authenticated' && session.user.mustChangePassword && route !== '/account';
+
   switch (route) {
     case '/login':
       return <LoginPage />;
@@ -64,7 +79,13 @@ export function App() {
       return <GuestRoute />;
   }
 
-  if (session.status === 'loading') return <p className="page-status">Chargement…</p>;
+  if (session.status === 'loading') {
+    return (
+      <div className="page-loading full">
+        <Spinner />
+      </div>
+    );
+  }
   if (session.status === 'offline') {
     return (
       <p className="page-status">API injoignable — lancer ./scripts/dev.sh, puis recharger.</p>
@@ -86,6 +107,8 @@ export function App() {
       return <BoardPage />;
     case '/account':
       return <AccountPage />;
+    case '/milestones':
+      return <MilestonesPage />;
     case '/admin':
       return <AdminPage />;
     case '/admin/audit':

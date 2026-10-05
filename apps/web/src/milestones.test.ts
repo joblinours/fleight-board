@@ -5,10 +5,10 @@ describe('MILESTONES', () => {
   it('a une fiche par jalon, dans l’ordre, sans doublon', () => {
     const ids = MILESTONES.map(({ id }) => id);
     expect(new Set(ids).size).toBe(ids.length);
-    // Mphase.numéro, triés par phase puis par numéro.
+    // Mphase.numéro(.sous-étape), triés par phase, numéro puis sous-étape.
     const keys = ids.map((id) => {
-      const [phase, number] = id.replace(/^M/, '').split('.').map(Number);
-      return (phase ?? 0) * 1000 + (number ?? 0);
+      const [phase, number, step] = id.replace(/^M/, '').split('.').map(Number);
+      return (phase ?? 0) * 100_000 + (number ?? 0) * 100 + (step ?? 0);
     });
     expect(keys).toEqual([...keys].sort((a, b) => a - b));
   });

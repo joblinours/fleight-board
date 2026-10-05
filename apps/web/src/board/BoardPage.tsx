@@ -11,6 +11,8 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../auth/api';
 import { refreshSession, useSession } from '../auth/session';
+import { Avatar, Badge, Button, copyText, Menu, MenuItem, Modal, toast } from '../ui/components';
+import { Icon, type IconName } from '../ui/Icon';
 import { createImageCache } from './image-cache';
 import { createLockService } from './lock-service';
 import { MembersPanel } from './MembersPanel';
@@ -33,21 +35,56 @@ const REJECTION_MESSAGES: Record<string, string> = {
   FORBIDDEN: 'non autorisée(s) pour votre rôle',
 };
 
-const TOOLS: Array<{ name: ToolName; label: string; key: string }> = [
-  { name: 'select', label: 'Sélection', key: 'V' },
-  { name: 'lasso', label: 'Lasso', key: 'Q' },
-  { name: 'rectangle', label: 'Rectangle', key: 'R' },
-  { name: 'ellipse', label: 'Ellipse', key: 'O' },
-  { name: 'polygon', label: 'Polygone', key: 'G' },
-  { name: 'text', label: 'Texte', key: 'T' },
-  { name: 'line', label: 'Ligne', key: 'L' },
-  { name: 'arrow', label: 'Flèche', key: 'A' },
-  { name: 'connector', label: 'Connecteur', key: 'C' },
-  { name: 'pen', label: 'Stylo', key: 'P' },
-  { name: 'highlighter', label: 'Surligneur', key: 'H' },
-  { name: 'eraser', label: 'Gomme', key: 'E' },
-  { name: 'frame', label: 'Frame', key: 'F' },
+type ToolSpec = { name: ToolName; label: string; key: string; icon: IconName };
+
+/** Outils, par groupes (séparés dans la barre d'outils). */
+const TOOL_GROUPS: ToolSpec[][] = [
+  [
+    { name: 'select', label: 'Sélection', key: 'V', icon: 'pointer' },
+    { name: 'lasso', label: 'Lasso', key: 'Q', icon: 'lasso' },
+  ],
+  [
+    { name: 'pen', label: 'Stylo', key: 'P', icon: 'pen' },
+    { name: 'highlighter', label: 'Surligneur', key: 'H', icon: 'highlighter' },
+    { name: 'eraser', label: 'Gomme', key: 'E', icon: 'eraser' },
+  ],
+  [
+    { name: 'rectangle', label: 'Rectangle', key: 'R', icon: 'square' },
+    { name: 'ellipse', label: 'Ellipse', key: 'O', icon: 'circle' },
+    { name: 'polygon', label: 'Polygone', key: 'G', icon: 'pentagon' },
+    { name: 'text', label: 'Texte', key: 'T', icon: 'type' },
+  ],
+  [
+    { name: 'line', label: 'Ligne', key: 'L', icon: 'line' },
+    { name: 'arrow', label: 'Flèche', key: 'A', icon: 'arrow' },
+    { name: 'connector', label: 'Connecteur', key: 'C', icon: 'connector' },
+  ],
+  [{ name: 'frame', label: 'Frame', key: 'F', icon: 'frame' }],
 ];
+
+const INPUT_MODES: Array<{ value: InputMode; label: string; hint: string }> = [
+  { value: 'auto', label: 'Automatique', hint: 'Stylet et souris dessinent, le doigt déplace' },
+  { value: 'pencil-only', label: 'Pencil uniquement', hint: 'Seul l’Apple Pencil dessine' },
+  { value: 'touch-drawing', label: 'Le doigt dessine', hint: 'Deux doigts pour déplacer' },
+];
+
+/** Raccourcis clavier affichés dans l'aide. */
+const SHORTCUTS: Array<[string, string]> = [
+  ['Ctrl/⌘ + Z', 'Annuler'],
+  ['Ctrl/⌘ + Maj + Z', 'Rétablir'],
+  ['Ctrl/⌘ + C / X / V', 'Copier, couper, coller'],
+  ['Ctrl/⌘ + D', 'Dupliquer'],
+  ['Ctrl/⌘ + G', 'Grouper (Maj : dégrouper)'],
+  ['Ctrl/⌘ + ] / [', 'Premier plan / arrière-plan'],
+  ['Suppr', 'Supprimer la sélection'],
+  ['Échap', 'Revenir à la sélection'],
+  ['Double-clic', 'Éditer le texte, le titre ou le label'],
+];
+
+/** Message bref en bas de l'écran (refus, import impossible…). */
+function notify(message: string): void {
+  toast(message, 'bell');
+}
 
 const PRESENCE_KEY = 'fleight.presenceMode';
 
@@ -95,10 +132,10 @@ export function BoardPage({
   /** Rôle sur le board : celui de l'API à l'ouverture, puis celui de la session. */
   const [role, setRole] = useState<BoardRole | null>(board?.role ?? null);
   const [showMembers, setShowMembers] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   // Rôle lu une fois à l'ouverture ; la session le met ensuite à jour (onRole).
   const initialRoleRef = useRef(board?.role ?? null);
   const clientRef = useRef<CollaborationClient | null>(null);
-  const [rejection, setRejection] = useState<string | null>(null);
   const [history, setHistory] = useState({ canUndo: false, canRedo: false });
   const [pending, setPending] = useState(0);
   /** Session terminée côté serveur : board supprimé (ou disparu). */
@@ -142,7 +179,7 @@ export function BoardPage({
             editorRef.current?.refresh();
           },
           onRejected: (code, count) =>
-            setRejection(
+            notify(
               count > 1
                 ? `${count} modifications n’ont pas pu être appliquées (${REJECTION_MESSAGES[code] ?? 'refusées'}) ; le board a été resynchronisé.`
                 : `Une modification n’a pas pu être appliquée (${REJECTION_MESSAGES[code] ?? 'refusée'}) ; le board a été resynchronisé.`,
@@ -150,7 +187,7 @@ export function BoardPage({
           onPending: setPending,
           onLocks: () => editorRef.current?.refresh(),
           onLockDenied: () =>
-            setRejection('Cet objet est en cours de modification par un autre participant.'),
+            notify('Cet objet est en cours de modification par un autre participant.'),
         })
       : undefined;
     clientRef.current = client ?? null;
@@ -204,7 +241,7 @@ export function BoardPage({
       onUndoSkipped: ({ applied, skipped, intent }) => {
         const action = intent === 'undo' ? 'Annulation' : 'Rétablissement';
         const count = skipped.length > 1 ? `${skipped.length} objets` : 'un objet';
-        setRejection(
+        notify(
           applied
             ? `${action} partielle : ${count} supprimé(s) ou modifié(s) depuis par un autre participant.`
             : `${action} impossible : ${count} supprimé(s) ou modifié(s) depuis par un autre participant.`,
@@ -234,12 +271,6 @@ export function BoardPage({
       clientRef.current = null;
     };
   }, [boardId]);
-
-  useEffect(() => {
-    if (!rejection) return;
-    const timer = window.setTimeout(() => setRejection(null), 4000);
-    return () => window.clearTimeout(timer);
-  }, [rejection]);
 
   useEffect(() => {
     if (editorRef.current) editorRef.current.inputMode = mode;
@@ -297,11 +328,11 @@ export function BoardPage({
       const editor = editorRef.current;
       if (!editor || !boardId) return;
       if (guestName) {
-        setRejection('L’import d’images est réservé aux comptes.');
+        notify('L’import d’images est réservé aux comptes.');
         return;
       }
       if (!file.type.startsWith('image/')) {
-        setRejection('Seules les images (PNG, JPEG, GIF, WebP) peuvent être importées.');
+        notify('Seules les images (PNG, JPEG, GIF, WebP) peuvent être importées.');
         return;
       }
       try {
@@ -313,13 +344,13 @@ export function BoardPage({
         const data: unknown = await response.json().catch(() => undefined);
         if (!response.ok) {
           const message = (data as { message?: string } | undefined)?.message;
-          setRejection(`Import impossible : ${message ?? `erreur ${response.status}`}`);
+          notify(`Import impossible : ${message ?? `erreur ${response.status}`}`);
           return;
         }
         const { asset } = AssetResponseSchema.parse(data);
         editor.insertImage({ assetId: asset.id, width: asset.width, height: asset.height });
       } catch {
-        setRejection('Import impossible : API injoignable.');
+        notify('Import impossible : API injoignable.');
       }
     },
     [boardId, guestName],
@@ -346,6 +377,9 @@ export function BoardPage({
   // Board local : tout est permis ; board partagé : selon le rôle.
   const canEdit = !boardId || can(role, 'board.edit');
   void viewVersion;
+
+  const managing = !!boardId && !guestName;
+  const others = participants.filter(({ connectionId }) => connectionId !== self);
 
   return (
     <div
@@ -392,84 +426,267 @@ export function BoardPage({
         />
       )}
 
-      <div className="board-toolbar">
-        {TOOLS.filter(({ name }) => canEdit || name === 'select').map(({ name, label, key }) => (
-          <button
-            key={name}
-            type="button"
-            className={tool === name ? 'active' : ''}
-            title={`${label} (${key})`}
-            onClick={() => editorRef.current?.setTool(name)}
+      {/* Barre supérieure : retour, nom du board, statut, participants, partage. */}
+      <header className="editor-topbar">
+        <div className="editor-island">
+          <a href="#/" className="btn btn-ghost btn-icon btn-sm" title="Retour aux tableaux">
+            <Icon name="arrowLeft" size={17} />
+          </a>
+          <span className="editor-divider" />
+          <div className="editor-title">
+            <strong>{board?.name ?? 'Board local'}</strong>
+            {board && (
+              <span
+                className="subtle"
+                title={board.visibility === 'private' ? 'Session privée' : 'Session publique'}
+              >
+                <Icon name={board.visibility === 'private' ? 'lock' : 'globe'} size={14} />
+              </span>
+            )}
+          </div>
+          {boardId && status !== 'joined' && (
+            <span className={`editor-status ${status ?? 'connecting'}`}>
+              <span className="status-dot" />
+              {STATUS_LABELS[status ?? 'connecting']}
+              {pending > 0 && ` · ${pending} en attente`}
+            </span>
+          )}
+          {!canEdit && (
+            <Badge tone="warning" icon="eye">
+              Lecture seule
+            </Badge>
+          )}
+        </div>
+
+        <div className="editor-island">
+          {boardId && (
+            <Menu
+              trigger={(props) => (
+                <button
+                  type="button"
+                  className="editor-people"
+                  title="Participants et présence"
+                  {...props}
+                >
+                  <span className="avatar-stack">
+                    {participants.slice(0, 4).map(({ connectionId, name, color }) => (
+                      <Avatar key={connectionId} name={name} color={color} size="sm" />
+                    ))}
+                  </span>
+                  {participants.length > 4 && (
+                    <span className="subtle">+{participants.length - 4}</span>
+                  )}
+                </button>
+              )}
+            >
+              <div className="menu-label">
+                {participants.length} participant{participants.length > 1 ? 's' : ''}
+              </div>
+              {participants.map(
+                ({
+                  connectionId,
+                  name,
+                  color,
+                  mode: participantMode,
+                  role: participantRole,
+                  guest,
+                }) => (
+                  <div key={connectionId} className="people-row">
+                    <Avatar name={name} color={color} size="sm" />
+                    <span className="people-name">
+                      {name}
+                      {connectionId === self && <span className="subtle"> (vous)</span>}
+                      <small className="subtle">
+                        {ROLE_LABELS[participantRole]}
+                        {guest ? ' · invité' : ''}
+                        {participantMode === 'drawing' ? ' · dessin seul' : ''}
+                      </small>
+                    </span>
+                  </div>
+                ),
+              )}
+              <div className="divider" />
+              <div className="menu-label">Votre présence</div>
+              <MenuItem
+                icon={presenceMode === 'cursor' ? 'check' : 'mousePointer'}
+                onClick={() => changePresenceMode('cursor')}
+              >
+                Curseur visible
+              </MenuItem>
+              <MenuItem
+                icon={presenceMode === 'drawing' ? 'check' : 'pen'}
+                onClick={() => changePresenceMode('drawing')}
+              >
+                Dessins seulement
+              </MenuItem>
+            </Menu>
+          )}
+          {others.length === 0 && boardId && <span className="editor-alone subtle">Seul ici</span>}
+          {board && (
+            <Button
+              variant="primary"
+              size="sm"
+              icon="share"
+              onClick={() => void copyText(shareLink(board), `Lien copié · code ${board.code}`)}
+              title={`Copier le lien de partage (code ${board.code})`}
+            >
+              Partager
+            </Button>
+          )}
+          {managing && (
+            <Button
+              size="sm"
+              icon="users"
+              onClick={() => setShowMembers(!showMembers)}
+              className={accessRequests > 0 ? 'has-badge' : undefined}
+            >
+              Membres
+              {accessRequests > 0 && <span className="count-badge">{accessRequests}</span>}
+            </Button>
+          )}
+          <Menu
+            trigger={(props) => (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="more"
+                aria-label="Plus d’options"
+                {...props}
+              />
+            )}
           >
-            {label}
-          </button>
-        ))}
+            {board && (
+              <>
+                <div className="menu-label">Code {board.code}</div>
+                <MenuItem icon="hash" onClick={() => void copyText(board.code, 'Code copié')}>
+                  Copier le code
+                </MenuItem>
+              </>
+            )}
+            {boardId && can(role, 'board.audit') && (
+              <MenuItem icon="history" href={`#/audit/${boardId}`}>
+                Audit du tableau
+              </MenuItem>
+            )}
+            {canEdit && (
+              <MenuItem icon="sparkles" onClick={loadSample}>
+                Insérer le diagramme d’exemple
+              </MenuItem>
+            )}
+            <div className="divider" />
+            <div className="menu-label">Saisie</div>
+            {INPUT_MODES.map((option) => (
+              <MenuItem
+                key={option.value}
+                icon={mode === option.value ? 'check' : 'pencilLine'}
+                onClick={() => setMode(option.value)}
+              >
+                {option.label}
+              </MenuItem>
+            ))}
+            <div className="divider" />
+            <MenuItem icon="key" onClick={() => setShowShortcuts(true)}>
+              Raccourcis clavier
+            </MenuItem>
+          </Menu>
+        </div>
+      </header>
+
+      {/* Outils, à gauche. */}
+      <nav className="editor-toolrail" aria-label="Outils">
+        {TOOL_GROUPS.map((group, index) => {
+          const tools = group.filter(({ name }) => canEdit || name === 'select');
+          if (!tools.length) return null;
+          return (
+            <div key={tools[0]?.name ?? index} className="toolrail-group">
+              {tools.map(({ name, label, key, icon }) => (
+                <button
+                  key={name}
+                  type="button"
+                  className={`tool-button${tool === name ? ' active' : ''}`}
+                  title={`${label} (${key})`}
+                  aria-label={label}
+                  aria-pressed={tool === name}
+                  onClick={() => editorRef.current?.setTool(name)}
+                >
+                  <Icon name={icon} size={19} />
+                </button>
+              ))}
+            </div>
+          );
+        })}
         {boardId && canEdit && !guestName && (
-          <label className="board-upload" title="Importer une image (ou glisser-déposer, coller)">
-            Image
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = '';
-                if (file) void uploadImage(file);
-              }}
-            />
-          </label>
+          <div className="toolrail-group">
+            <label className="tool-button" title="Importer une image (ou glisser-déposer, coller)">
+              <Icon name="image" size={19} />
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                aria-label="Importer une image"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = '';
+                  if (file) void uploadImage(file);
+                }}
+              />
+            </label>
+          </div>
         )}
-        {!canEdit && <span className="board-readonly">Lecture seule</span>}
-        <span className="board-separator" />
+      </nav>
+
+      {/* Historique et cadrage, en bas. */}
+      <div className="editor-bottombar">
         {canEdit && (
-          <>
-            <button
-              type="button"
+          <div className="editor-island">
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="undo"
               title="Annuler (Ctrl/⌘+Z)"
+              aria-label="Annuler"
               disabled={!history.canUndo}
               onClick={() => editorRef.current?.undo()}
-            >
-              Annuler
-            </button>
-            <button
-              type="button"
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="redo"
               title="Rétablir (Ctrl/⌘+Maj+Z)"
+              aria-label="Rétablir"
               disabled={!history.canRedo}
               onClick={() => editorRef.current?.redo()}
-            >
-              Rétablir
-            </button>
-            <button
-              type="button"
-              disabled={selectionSize === 0}
-              onClick={() => editorRef.current?.deleteSelection()}
-            >
-              Supprimer
-            </button>
-          </>
+            />
+            {selectionSize > 0 && (
+              <>
+                <span className="editor-divider" />
+                <Button
+                  variant="danger-ghost"
+                  size="sm"
+                  icon="trash"
+                  title="Supprimer la sélection (Suppr)"
+                  aria-label="Supprimer la sélection"
+                  onClick={() => editorRef.current?.deleteSelection()}
+                />
+              </>
+            )}
+          </div>
         )}
-        <button type="button" onClick={() => editorRef.current?.fitContent()}>
-          Recadrer
-        </button>
-        {canEdit && (
-          <button type="button" onClick={loadSample}>
-            Exemple
-          </button>
-        )}
-        <select
-          aria-label="Mode de saisie"
-          value={mode}
-          onChange={(event) => setMode(event.target.value as InputMode)}
-        >
-          <option value="auto">Auto</option>
-          <option value="pencil-only">Pencil seul</option>
-          <option value="touch-drawing">Doigt dessine</option>
-        </select>
-        <a href="#/">Accueil</a>
+        <div className="editor-island">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="fit"
+            title="Recadrer sur le contenu"
+            onClick={() => editorRef.current?.fitContent()}
+          >
+            Recadrer
+          </Button>
+        </div>
       </div>
 
-      {canEdit && <PropertiesPanel editor={editorRef.current} tool={tool} />}
+      {canEdit && !showMembers && <PropertiesPanel editor={editorRef.current} tool={tool} />}
 
-      {showMembers && boardId && !guestName && (
+      {showMembers && managing && (
         <MembersPanel
           boardId={boardId}
           selfId={session.status === 'authenticated' ? session.user.id : undefined}
@@ -480,89 +697,58 @@ export function BoardPage({
       )}
 
       {accessRequests > 0 && !showMembers && (
-        <button type="button" className="board-requests-toast" onClick={() => setShowMembers(true)}>
+        <button type="button" className="editor-requests" onClick={() => setShowMembers(true)}>
+          <Icon name="bell" size={16} />
           {accessRequests === 1
             ? '1 demande d’accès en attente'
             : `${accessRequests} demandes d’accès en attente`}
         </button>
       )}
 
-      {boardId && (
-        <div className="board-session">
-          <span className={`board-status ${status ?? 'connecting'}`}>
-            {STATUS_LABELS[status ?? 'connecting']}
-          </span>
-          {pending > 0 && status !== 'joined' && (
-            <span className="board-pending">
-              {pending} modification{pending > 1 ? 's' : ''} en attente
-            </span>
-          )}
-          <span className="board-room">
-            {board?.name} · code <strong>{board?.code}</strong>
-          </span>
-          <span className="board-role">
-            {role ? `Votre rôle : ${ROLE_LABELS[role]}` : ''}
-            {guestName ? (
-              <span className="board-guest-badge">Invité</span>
-            ) : (
-              <span className="board-role-actions">
-                {can(role, 'board.audit') && <a href={`#/audit/${boardId}`}>Audit</a>}
-                <button type="button" onClick={() => setShowMembers(!showMembers)}>
-                  Membres{accessRequests > 0 ? ` (${accessRequests})` : ''}
-                </button>
-              </span>
-            )}
-          </span>
-          <label className="board-presence">
-            Présence
-            <select
-              value={presenceMode}
-              onChange={(event) => changePresenceMode(event.target.value as PresenceMode)}
-            >
-              <option value="cursor">Cursor visible</option>
-              <option value="drawing">Drawing only</option>
-            </select>
-          </label>
-          <ul className="board-participants" aria-label="Participants">
-            {participants.map(
-              ({ connectionId, name, color, mode: participantMode, role: participantRole }) => (
-                <li key={connectionId}>
-                  <span className="board-participant-dot" style={{ background: color }} />
-                  {name}
-                  <span className="board-participant-role">{ROLE_LABELS[participantRole]}</span>
-                  {connectionId === self && <span className="board-participant-self"> (vous)</span>}
-                  <span
-                    className="board-participant-mode"
-                    title={participantMode === 'cursor' ? 'Cursor visible' : 'Drawing only'}
-                  >
-                    {participantMode === 'cursor' ? 'curseur' : 'dessin seul'}
-                  </span>
-                </li>
-              ),
-            )}
-          </ul>
-        </div>
+      {showShortcuts && (
+        <Modal title="Raccourcis clavier" onClose={() => setShowShortcuts(false)}>
+          <dl className="shortcuts">
+            {TOOL_GROUPS.flat().map(({ name, label, key }) => (
+              <div key={name}>
+                <dt>
+                  <kbd>{key}</kbd>
+                </dt>
+                <dd>{label}</dd>
+              </div>
+            ))}
+            {SHORTCUTS.map(([keys, label]) => (
+              <div key={keys}>
+                <dt>
+                  <kbd>{keys}</kbd>
+                </dt>
+                <dd>{label}</dd>
+              </div>
+            ))}
+          </dl>
+        </Modal>
       )}
 
       {ended && (
-        <div className="board-ended" role="alert">
-          <p>{ended}</p>
-          <a href="#/">Retour à l’accueil</a>
+        <div className="editor-ended" role="alert">
+          <div className="card">
+            <div className="card-body editor-ended-body">
+              <span className="empty-icon">
+                <Icon name="lock" size={22} />
+              </span>
+              <h2>Session terminée</h2>
+              <p className="muted">{ended}</p>
+              <a href="#/" className="btn btn-primary">
+                Retour aux tableaux
+              </a>
+            </div>
+          </div>
         </div>
       )}
-
-      {rejection && (
-        <div className="board-toast" role="status">
-          {rejection}
-        </div>
-      )}
-
-      <p className="board-help">
-        Double-tap / double-clic sur une forme pour éditer son texte (le titre d’une frame, le label
-        d’un connecteur) · Glisser l’extrémité d’un connecteur sélectionné pour le reconnecter ·
-        Glisser dans le vide pour sélectionner · Suppr pour supprimer · Échap pour revenir à la
-        sélection
-      </p>
     </div>
   );
+}
+
+/** Lien de partage d'un board (entrée par code, compte ou invité). */
+function shareLink(board: BoardSummary): string {
+  return `${window.location.origin}${window.location.pathname}#/join/${board.code}`;
 }
