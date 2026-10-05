@@ -32,6 +32,11 @@ export const BoardAuditActionSchema = z.enum([
   'board.member.add',
   'board.member.update',
   'board.member.remove',
+  'board.guest.join',
+  'board.guest.remove',
+  'board.access.request',
+  'board.access.accept',
+  'board.access.deny',
 ]);
 export type BoardAuditAction = z.infer<typeof BoardAuditActionSchema>;
 
@@ -42,7 +47,7 @@ export const AuditRecordSchema = z.object({
   createdAt: z.string(),
   /** Utilisateur (ou client anonyme pour les entrées antérieures aux comptes). */
   actor: z.string(),
-  actorType: z.enum(['client', 'user', 'system']),
+  actorType: z.enum(['client', 'user', 'guest', 'system']),
   action: z.union([ObjectAuditActionSchema, AccountAuditActionSchema, BoardAuditActionSchema]),
   boardId: z.string().nullable(),
   /** Objet du board, ou utilisateur visé par un événement de compte. */

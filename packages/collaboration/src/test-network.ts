@@ -70,6 +70,7 @@ export function createNetwork<Store extends BoardStore = MemoryBoardStore>(
       schedule: (callback) => scheduled.push(callback),
       onRejected: (code) => events.push({ type: 'rejected', detail: code }),
       onLockDenied: (ids, holder) => events.push({ type: 'lockDenied', detail: { ids, holder } }),
+      onAccessRequests: (pending) => events.push({ type: 'accessRequests', detail: pending }),
     });
     client.connect({
       send: (message) => {

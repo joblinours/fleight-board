@@ -4,7 +4,9 @@ import type {
   BoardAuditAction,
   BoardCanvas,
   BoardObject,
+  BoardVisibility,
   DefaultRole,
+  GuestRole,
   ImageMimeType,
   MemberRole,
   Operation,
@@ -37,8 +39,12 @@ export const boards = pgTable(
     ownerId: text('owner_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
     /** Masqué de la liste de son propriétaire. */
     hidden: boolean('hidden').notNull().default(false),
-    /** Accès des utilisateurs connectés non membres (lien ou code). */
+    /** Session publique (entrée directe) ou privée (demande d'accès). */
+    visibility: text('visibility').$type<BoardVisibility>().notNull().default('public'),
+    /** Rôle des non-membres qui entrent dans une session publique. */
     defaultRole: text('default_role').$type<DefaultRole>().notNull().default('editor'),
+    /** Invités sans compte admis (par code ou lien). */
+    allowGuests: boolean('allow_guests').notNull().default(false),
     /** Séquence du dernier lot appliqué. */
     seq: bigint('seq', { mode: 'number' }).notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -61,6 +67,12 @@ export const boardMembers = pgTable(
       .notNull()
       .references((): AnyPgColumn => users.id, { onDelete: 'cascade' }),
     role: text('role').$type<MemberRole>().notNull(),
+    /** Accès temporaire : fin de validité. */
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    /** Accès valable tant que ce compte est connecté au board. */
+    whileConnected: text('while_connected').references((): AnyPgColumn => users.id, {
+      onDelete: 'cascade',
+    }),
     /** Qui a attribué le rôle. */
     grantedBy: text('granted_by').references((): AnyPgColumn => users.id, {
       onDelete: 'set null',
@@ -72,6 +84,56 @@ export const boardMembers = pgTable(
     primaryKey({ columns: [table.boardId, table.userId] }),
     index('board_members_user_idx').on(table.userId),
   ],
+);
+
+/**
+ * Invités sans compte : identifiés par un cookie (hash du jeton stocké), limités
+ * à un board. `role` absent : demande d'accès en attente ou refusée.
+ */
+export const guests = pgTable(
+  'guests',
+  {
+    id: text('id').primaryKey(),
+    boardId: text('board_id')
+      .notNull()
+      .references(() => boards.id, { onDelete: 'cascade' }),
+    displayName: text('display_name').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    role: text('role').$type<GuestRole>(),
+    /** Fin de validité de l'invité (cookie), et de son accès. */
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    whileConnected: text('while_connected').references((): AnyPgColumn => users.id, {
+      onDelete: 'cascade',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('guests_token_idx').on(table.tokenHash),
+    index('guests_board_idx').on(table.boardId),
+  ],
+);
+
+export type AccessRequestStatus = 'pending' | 'granted' | 'denied';
+
+/** Demandes d'accès à une session privée (compte ou invité). */
+export const accessRequests = pgTable(
+  'access_requests',
+  {
+    id: text('id').primaryKey(),
+    boardId: text('board_id')
+      .notNull()
+      .references(() => boards.id, { onDelete: 'cascade' }),
+    userId: text('user_id').references((): AnyPgColumn => users.id, { onDelete: 'cascade' }),
+    guestId: text('guest_id').references((): AnyPgColumn => guests.id, { onDelete: 'cascade' }),
+    displayName: text('display_name').notNull(),
+    status: text('status').$type<AccessRequestStatus>().notNull().default('pending'),
+    decidedBy: text('decided_by').references((): AnyPgColumn => users.id, {
+      onDelete: 'set null',
+    }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('access_requests_board_status_idx').on(table.boardId, table.status)],
 );
 
 /** État courant des objets : un board se charge sans rejouer le journal. */

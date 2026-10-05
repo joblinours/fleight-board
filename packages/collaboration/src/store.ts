@@ -15,7 +15,7 @@ export type JournalEntry = {
   /** Connexion à l'origine (utilisateur à partir de M1.1). */
   actor: string;
   /** `user` : compte authentifié ; `client` : client anonyme (tests, Phase 0). */
-  actorType?: 'user' | 'client';
+  actorType?: 'user' | 'guest' | 'client';
   /** Connexion à l'origine de l'entrée (audit). */
   session?: string;
   /** Nom affiché de l'auteur (audit, en attendant les comptes de M1.1). */

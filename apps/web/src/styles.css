@@ -1181,7 +1181,7 @@ button.link {
 }
 
 .board-members-identifier {
-  flex: 1;
+  flex: 1 1 100%;
   min-width: 0;
 }
 
@@ -1196,4 +1196,92 @@ button.link {
 
 .boards-shared {
   color: #2563eb;
+}
+
+.board-requests-toast {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right));
+  top: 160px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 10px;
+  background: #2563eb;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.2);
+}
+
+.board-guest-badge {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #e0e7ff;
+  color: #3730a3;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.board-members h3 {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+}
+
+.board-members-requests {
+  padding: 8px;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+
+.board-members-access {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+  border-radius: 8px;
+}
+
+.board-members-limit {
+  color: #b45309;
+}
+
+.guest-join {
+  display: grid;
+  gap: 8px;
+  max-width: 320px;
+  margin: 1rem auto;
+  text-align: left;
+}
+
+.guest-join h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.guest-join-field {
+  display: grid;
+  gap: 4px;
+}
+
+.access-page {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+}
+
+.access-waiting {
+  font-weight: 600;
+}
+
+.access-hint {
+  max-width: 420px;
+  color: GrayText;
+}
+
+.board-members-actions,
+.board-members-add {
+  flex-wrap: wrap;
+}
+
+.board-members select {
+  max-width: 100%;
 }

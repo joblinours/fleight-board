@@ -2,7 +2,7 @@ import type { Intent, Operation } from '@fleight/protocol';
 import type { JournalEntry } from './store';
 
 /** Nature de l'auteur : client anonyme en Phase 0, utilisateur à partir de M1.1. */
-export type AuditActorType = 'client' | 'user' | 'system';
+export type AuditActorType = 'client' | 'user' | 'guest' | 'system';
 
 export type AuditAction = 'object.create' | 'object.update' | 'object.delete';
 

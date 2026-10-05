@@ -68,6 +68,9 @@ const app = await buildApp({
 // Libération des verrous abandonnés (client parti sans prévenir).
 const lockSweep = setInterval(() => void hub?.sweepLocks(), 1000);
 lockSweep.unref();
+// Accès temporaires expirés : les sessions concernées sont fermées.
+const accessSweep = setInterval(() => void hub?.refreshAllAccess().catch(() => {}), 30_000);
+accessSweep.unref();
 // Sessions expirées.
 const sessionSweep = setInterval(
   () => void auth.purgeExpiredSessions().catch(() => {}),
@@ -78,6 +81,7 @@ sessionSweep.unref();
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, 'arrêt en cours');
   clearInterval(lockSweep);
+  clearInterval(accessSweep);
   clearInterval(sessionSweep);
   await app.close();
   // Les lots déjà confirmés sont enregistrés ; on attend ceux en cours.

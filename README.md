@@ -196,7 +196,7 @@ Viewer < Editor < Presenter < Co-owner < Owner
 - Seul l'**Owner** peut supprimer le whiteboard et en transférer la propriété ; le **Co-owner** gère tout le reste (membres, partage, permissions).
 - On ne peut déléguer qu'un rôle au plus égal au sien.
 - Un Admin global qui crée un whiteboard y agit comme un User ; le rôle maximal qu'il peut déléguer est **Co-owner**. Il n'a aucun droit implicite sur les boards des autres (seule la lecture de l'audit lui reste ouverte).
-- Accès des utilisateurs non membres qui connaissent le lien ou le code : **Editor** (par défaut), **Viewer**, ou **aucun** (membres seulement). Un rôle de membre l'emporte toujours, même s'il est plus faible.
+- Accès des non-membres qui connaissent le lien ou le code : voir [Partage](#partage). Un rôle de membre l'emporte toujours, même s'il est plus faible.
 - Le serveur vérifie le rôle sur chaque requête REST et chaque message WebSocket ; un changement de rôle s'applique en direct aux sessions ouvertes, un membre qui perd l'accès est déconnecté.
 
 | Action | Rôle minimal |
@@ -209,13 +209,14 @@ Viewer < Editor < Presenter < Co-owner < Owner
 
 ### Accès temporaires
 
-Un membre peut recevoir un accès **permanent**, **temporaire** (durée définie) ou **valable tant que le détenteur est connecté**.
+Un membre (ou un invité) peut recevoir un accès **permanent**, **temporaire** (1 heure à 30 jours) ou **valable tant que la personne qui l'a accordé est connectée au board**. À l'expiration (vérifiée toutes les 30 s) ou au départ de cette personne, la session est fermée.
 
 ## Partage
 
-- **Code court** de 6 caractères (ex. `K7P4X2`), sans caractères ambigus (`O/0`, `I/1`, `S/5`). C'est un identifiant, pas un secret : il est protégé par du rate limiting et de la détection d'abus. _(Code et « Rejoindre un board » implémentés en M1.2 ; sessions publiques/privées en M1.8.)_
-- **Session publique** : toute personne connaissant le code peut rejoindre.
-- **Session privée** : chaque demande de connexion doit être acceptée.
+- **Code court** de 6 caractères (ex. `K7P4X2`), sans caractères ambigus (`O/0`, `I/1`, `S/5`). C'est un identifiant, pas un secret : rate limiting par adresse, et **cooldown** de 5 minutes après 10 codes inexistants en 10 minutes. Lien de partage : `#/join/CODE`.
+- **Session publique** : toute personne connaissant le code entre directement, avec le rôle par défaut du board (Editor ou Viewer).
+- **Session privée** : chaque demande d'accès doit être acceptée (rôle et durée) ou refusée par le propriétaire ou un Co-owner, prévenus en temps réel ; le demandeur attend dans une salle d'attente et entre dès l'acceptation.
+- **Invités** (si le board les accepte) : sans compte, avec un simple nom, par le code ou le lien. Un invité est Viewer ou Editor, limité à ce board, pour 24 heures au plus ; il ne gère rien et n'importe pas d'images.
 - **Share links** Viewer ou Editor, à jetons aléatoires longs, révocables et éventuellement temporaires.
 
 ## Plugins
@@ -361,10 +362,14 @@ Variables d'environnement (`apps/api/.env`, modèle : `apps/api/.env.example`) :
 | `GET /admin/audit?limit=200` | Admin : événements de compte (connexions, administration) |
 | `GET`, `POST /boards` | Ses whiteboards et ceux partagés avec lui, avec son rôle (`?hidden=true` : avec les masqués) ; création (nom, description, canvas infini ou standard) |
 | `GET /boards/code/:code` | Board correspondant à un code court (rate limiting par IP ; `403` si réservé à ses membres) |
-| `GET`, `PATCH`, `DELETE /boards/:id` | Détails (Viewer) ; renommage, description, masquage, accès des non-membres (Co-owner) ; suppression immédiate (Owner) |
+| `GET`, `PATCH`, `DELETE /boards/:id` | Détails (Viewer) ; renommage, description, masquage, session publique/privée, rôle par défaut, invités (Co-owner) ; suppression immédiate (Owner) |
 | `GET`, `POST /boards/:id/members` | Propriétaire et membres (tout participant) ; ajout par nom d'utilisateur ou e-mail (Co-owner, rôle au plus égal au sien) |
 | `PATCH`, `DELETE /boards/:id/members/:userId` | Rôle d'un membre ; retrait (Co-owner, membre de rôle au plus égal au sien), ou départ volontaire |
 | `POST /boards/:id/transfer` | Transfert de propriété à un membre (Owner ; il devient Co-owner) |
+| `POST /boards/:id/access-requests` | Demande d'accès à une session privée ; `GET /boards/:id/access-request` : état de sa demande (compte ou invité) |
+| `GET /boards/:id/access-requests`, `POST /boards/:id/access-requests/:requestId` | Demandes en attente ; acceptation (rôle, durée) ou refus (Co-owner) |
+| `POST /boards/code/:code/guest` | Rejoindre sans compte (nom) : cookie invité limité au board (cooldown des codes) |
+| `GET /guest` ; `DELETE /boards/:id/guests/:guestId` | Invité de la session et son board ; retrait d'un invité (Co-owner) |
 | `POST /boards/:id/assets` | Import d'une image (Editor ; corps brut ; type vérifié dans le fichier : PNG, JPEG, GIF, WebP ; SVG refusé) |
 | `GET /assets/:id` | Image importée (session requise, contenu immuable) |
 | `GET /boards/:id/audit?limit=200` | Audit d'un board, du plus récent au plus ancien (Co-owner, Owner, Admin) |

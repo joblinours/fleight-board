@@ -1,4 +1,10 @@
-import { BOARD_ROLES, type BoardRole, type DefaultRole, type MemberRole } from '@fleight/protocol';
+import {
+  BOARD_ROLES,
+  type BoardRole,
+  type BoardVisibility,
+  type DefaultRole,
+  type MemberRole,
+} from '@fleight/protocol';
 
 /** Rang d'un rôle : chaque rôle a tous les droits des rôles inférieurs. */
 export function rank(role: BoardRole): number {
@@ -77,17 +83,32 @@ export function canChangeRole(
 
 /**
  * Rôle effectif d'un utilisateur sur un board : propriétaire, sinon son rôle de
- * membre, sinon l'accès des non-membres (`none` : aucun accès). Le rôle global
- * (Admin) n'intervient pas : un Admin agit sur un board comme un User.
+ * membre (accès encore valide), sinon le rôle par défaut d'une session publique ;
+ * dans une session privée, un non-membre n'a aucun accès (il doit le demander).
+ * Le rôle global (Admin) n'intervient pas : un Admin agit sur un board comme un User.
  */
 export function effectiveRole(options: {
   isOwner: boolean;
   memberRole?: MemberRole | null | undefined;
+  visibility: BoardVisibility;
   defaultRole: DefaultRole;
 }): BoardRole | undefined {
   if (options.isOwner) return 'owner';
   if (options.memberRole) return options.memberRole;
-  return options.defaultRole === 'none' ? undefined : options.defaultRole;
+  return options.visibility === 'public' ? options.defaultRole : undefined;
+}
+
+/**
+ * Un accès accordé est-il encore valide : pas expiré, et la personne qui l'a
+ * accordé « tant qu'elle est connectée » l'est toujours.
+ */
+export function accessValid(
+  limit: { expiresAt: Date | null; whileConnected: string | null },
+  { now = new Date(), isConnected }: { now?: Date; isConnected: (userId: string) => boolean },
+): boolean {
+  if (limit.expiresAt && limit.expiresAt.getTime() <= now.getTime()) return false;
+  if (limit.whileConnected && !isConnected(limit.whileConnected)) return false;
+  return true;
 }
 
 /** Libellés français des rôles (interface). */
