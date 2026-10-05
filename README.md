@@ -81,6 +81,7 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 |---|---|
 | Authentification locale (Argon2id, sessions, anti brute force) | 🧪 Implémentée (M1.1) ; MFA TOTP _(prévu)_ |
 | Gestion des comptes Users / Admins, demandes de compte | 🧪 Implémentée (M1.1) |
+| Interface web (tableau de bord, administration, thème clair/sombre) | 🧪 Implémentée (M1.9.5) : design system maison, barre latérale, menus et modales |
 | Politique de rétention (corbeille) | _(prévu)_ |
 | Limites de fichiers et de stockage | _(prévu)_ |
 | Gestion des plugins (ZIP, marketplace) | _(prévu)_ |

@@ -2,7 +2,9 @@ import { BoardIdSchema, BoardResponseSchema, type BoardSummary } from '@fleight/
 import { useEffect, useState } from 'react';
 import { ApiRequestError, api } from '../auth/api';
 import { useSession } from '../auth/session';
-import { AccessRequestView } from './AccessPages';
+import { Button, Spinner } from '../ui/components';
+import { Icon } from '../ui/Icon';
+import { AccessLayout, AccessRequestView } from './AccessPages';
 import { BoardPage } from './BoardPage';
 
 type State =
@@ -54,7 +56,11 @@ export function BoardRoute({ boardId }: { boardId: string }) {
 
   switch (state.kind) {
     case 'loading':
-      return <p className="page-status">Chargement du board…</p>;
+      return (
+        <div className="page-loading full">
+          <Spinner />
+        </div>
+      );
     case 'ready':
       return <BoardPage board={state.board} />;
     case 'private':
@@ -70,24 +76,32 @@ export function BoardRoute({ boardId }: { boardId: string }) {
       );
     case 'error':
       return (
-        <main className="page-status">
-          <p>{state.message}</p>
-          <a href="#/">Accueil</a>
-        </main>
+        <AccessLayout>
+          <span className="access-icon danger">
+            <Icon name="x" size={24} />
+          </span>
+          <h1>Impossible d’ouvrir ce tableau</h1>
+          <p className="muted access-hint">{state.message}</p>
+          <a href="#/" className="btn btn-secondary">
+            Retour aux tableaux
+          </a>
+        </AccessLayout>
       );
     case 'missing':
       return (
-        <main className="page-status">
-          <p>Le board « {boardId} » n’existe pas.</p>
+        <AccessLayout>
+          <span className="access-icon">
+            <Icon name="search" size={24} />
+          </span>
+          <h1>Tableau introuvable</h1>
+          <p className="muted access-hint">Aucun tableau ne porte l’identifiant « {boardId} ».</p>
           {BoardIdSchema.safeParse(boardId).success && (
-            <p>
-              <button type="button" disabled={creating} onClick={() => void create()}>
-                Créer ce board
-              </button>
-            </p>
+            <Button variant="primary" icon="plus" disabled={creating} onClick={() => void create()}>
+              Créer ce tableau
+            </Button>
           )}
-          <a href="#/">Accueil</a>
-        </main>
+          <a href="#/">Retour aux tableaux</a>
+        </AccessLayout>
       );
   }
 }
@@ -103,9 +117,21 @@ export function JoinRoute({ code }: { code: string }) {
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : 'Erreur'));
   }, [code]);
   return (
-    <main className="page-status">
-      <p>{error ?? 'Recherche du board…'}</p>
-      {error && <a href="#/">Accueil</a>}
-    </main>
+    <AccessLayout>
+      {error ? (
+        <>
+          <span className="access-icon danger">
+            <Icon name="x" size={24} />
+          </span>
+          <h1>Code introuvable</h1>
+          <p className="muted access-hint">{error}</p>
+          <a href="#/" className="btn btn-secondary">
+            Retour aux tableaux
+          </a>
+        </>
+      ) : (
+        <Spinner />
+      )}
+    </AccessLayout>
   );
 }

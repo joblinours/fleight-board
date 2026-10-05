@@ -10,6 +10,19 @@ import {
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { ApiRequestError, api } from '../auth/api';
 import { useSession } from '../auth/session';
+import { AppShell, PageHeader } from '../layout/AppShell';
+import {
+  Avatar,
+  Badge,
+  Button,
+  copyText,
+  EmptyState,
+  Field,
+  Menu,
+  MenuItem,
+  Modal,
+} from '../ui/components';
+import { Icon } from '../ui/Icon';
 
 const STATUS_LABELS: Record<PublicUser['status'], string> = {
   active: 'Actif',
@@ -37,6 +50,7 @@ export function AdminPage() {
   const [message, setMessage] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
   /** Mot de passe temporaire à transmettre, affiché une seule fois. */
   const [secret, setSecret] = useState<{ username: string; password: string } | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -90,102 +104,149 @@ export function AdminPage() {
   if (session.status !== 'authenticated') return null;
   if (session.user.role !== 'admin') {
     return (
-      <main className="admin">
-        <p>Réservé aux Admins.</p>
-        <a href="#/">Accueil</a>
-      </main>
+      <AppShell>
+        <div className="page">
+          <EmptyState icon="shield" title="Réservé aux administrateurs" />
+        </div>
+      </AppShell>
     );
   }
   const self = session.user.id;
   const pending = users.filter(({ status }) => status === 'pending');
-  const names = new Map(users.map((user) => [user.id, user.username]));
+  const names = new Map(users.map((user) => [user.id, user.displayName]));
+  const accounts = users.filter(({ status }) => status !== 'pending');
 
   return (
-    <main className="admin">
-      <nav>
-        <a href="#/">Accueil</a>
-        <a href="#/account">Mon compte</a>
-      </nav>
-      <h1>Administration</h1>
+    <AppShell>
+      <div className="page">
+        <PageHeader
+          title="Comptes"
+          subtitle={`${accounts.length} compte${accounts.length > 1 ? 's' : ''} · validation des demandes, rôles et mots de passe.`}
+          actions={
+            <>
+              <a href="#/admin/audit" className="btn btn-secondary">
+                <Icon name="history" size={17} />
+                Audit global
+              </a>
+              <Button variant="primary" icon="plus" onClick={() => setCreating(true)}>
+                Nouveau compte
+              </Button>
+            </>
+          }
+        />
 
-      {message && <p className={`admin-message ${message.kind}`}>{message.text}</p>}
-      {secret && (
-        <div className="admin-secret" role="status">
-          <p>
-            Mot de passe temporaire de <strong>{secret.username}</strong>, à lui transmettre (il ne
-            sera plus affiché) :
-          </p>
-          <code>{secret.password}</code>
-          <button type="button" onClick={() => setSecret(null)}>
-            C’est noté
-          </button>
-        </div>
-      )}
+        {message && (
+          <div className={`alert alert-${message.kind === 'error' ? 'error' : 'success'}`}>
+            <Icon name={message.kind === 'error' ? 'x' : 'check'} size={16} />
+            {message.text}
+          </div>
+        )}
 
-      {pending.length > 0 && (
-        <section>
-          <h2>Demandes de compte ({pending.length})</h2>
-          <ul className="admin-requests">
-            {pending.map((user) => (
-              <li key={user.id}>
-                <span>
-                  <strong>{user.displayName}</strong> — {user.username}
-                  {user.email ? ` · ${user.email}` : ''}
-                </span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    void update(user, { status: 'active' }, `Compte ${user.username} validé`)
-                  }
-                >
-                  Valider
-                </button>
-                <button type="button" className="danger" onClick={() => remove(user)}>
-                  Refuser
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+        {pending.length > 0 && (
+          <section className="card">
+            <div className="card-body form-stack">
+              <div className="section-title">
+                <h2>Demandes de compte</h2>
+                <Badge tone="warning">{pending.length} en attente</Badge>
+              </div>
+              <ul className="people-list">
+                {pending.map((user) => (
+                  <li key={user.id} className="person">
+                    <Avatar name={user.displayName} />
+                    <span className="person-text">
+                      <strong>{user.displayName}</strong>
+                      <small>
+                        @{user.username}
+                        {user.email ? ` · ${user.email}` : ''}
+                      </small>
+                    </span>
+                    <span className="person-actions">
+                      <Button size="sm" variant="ghost" onClick={() => remove(user)}>
+                        Refuser
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        icon="check"
+                        onClick={() =>
+                          void update(user, { status: 'active' }, `Compte ${user.username} validé`)
+                        }
+                      >
+                        Valider
+                      </Button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        )}
 
-      <section>
-        <h2>Comptes</h2>
-        <div className="admin-scroll">
-          <table>
+        <div className="table-wrap">
+          <table className="table">
             <thead>
               <tr>
                 <th>Utilisateur</th>
                 <th>Rôle</th>
                 <th>État</th>
                 <th>Dernière connexion</th>
-                <th>Actions</th>
+                <th aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
-              {users
-                .filter(({ status }) => status !== 'pending')
-                .map((user) => (
-                  <tr key={user.id}>
-                    <td>
-                      <strong>{user.displayName}</strong>
-                      <br />
-                      <small>
-                        {user.username}
-                        {user.email ? ` · ${user.email}` : ''}
-                      </small>
-                    </td>
-                    <td>{user.role === 'admin' ? 'Admin' : 'Utilisateur'}</td>
-                    <td>
+              {accounts.map((user) => (
+                <tr key={user.id}>
+                  <td>
+                    <span className="table-user">
+                      <Avatar name={user.displayName} size="sm" />
+                      <span className="person-text">
+                        <strong>
+                          {user.displayName}
+                          {user.id === self && <span className="subtle"> (vous)</span>}
+                        </strong>
+                        <small>
+                          @{user.username}
+                          {user.email ? ` · ${user.email}` : ''}
+                        </small>
+                      </span>
+                    </span>
+                  </td>
+                  <td>
+                    {user.role === 'admin' ? (
+                      <Badge tone="primary" icon="shield">
+                        Admin
+                      </Badge>
+                    ) : (
+                      <Badge>Utilisateur</Badge>
+                    )}
+                  </td>
+                  <td>
+                    <Badge tone={user.status === 'active' ? 'success' : 'danger'}>
                       {STATUS_LABELS[user.status]}
-                      {user.mustChangePassword && <small> · mot de passe temporaire</small>}
-                    </td>
-                    <td>{user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : '—'}</td>
-                    <td className="admin-actions">
+                    </Badge>{' '}
+                    {user.mustChangePassword && (
+                      <Badge tone="warning">Mot de passe temporaire</Badge>
+                    )}
+                  </td>
+                  <td className="muted">
+                    {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : 'Jamais'}
+                  </td>
+                  <td className="table-actions">
+                    <Menu
+                      trigger={(props) => (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon="more"
+                          aria-label={`Actions pour ${user.username}`}
+                          {...props}
+                        />
+                      )}
+                    >
                       {user.id !== self && (
                         <>
-                          <button
-                            type="button"
+                          <MenuItem
+                            icon="shield"
                             onClick={() =>
                               void update(
                                 user,
@@ -194,10 +255,10 @@ export function AdminPage() {
                               )
                             }
                           >
-                            {user.role === 'admin' ? 'Retirer Admin' : 'Rendre Admin'}
-                          </button>
-                          <button
-                            type="button"
+                            {user.role === 'admin' ? 'Retirer le rôle Admin' : 'Rendre Admin'}
+                          </MenuItem>
+                          <MenuItem
+                            icon={user.status === 'active' ? 'lock' : 'check'}
                             onClick={() =>
                               void update(
                                 user,
@@ -207,74 +268,117 @@ export function AdminPage() {
                             }
                           >
                             {user.status === 'active' ? 'Désactiver' : 'Réactiver'}
-                          </button>
+                          </MenuItem>
                         </>
                       )}
-                      <button type="button" onClick={() => void resetPassword(user)}>
+                      <MenuItem icon="key" onClick={() => void resetPassword(user)}>
                         Réinitialiser le mot de passe
-                      </button>
+                      </MenuItem>
                       {user.id !== self && (
-                        <button type="button" className="danger" onClick={() => remove(user)}>
-                          Supprimer
-                        </button>
+                        <>
+                          <div className="divider" />
+                          <MenuItem icon="trash" danger onClick={() => remove(user)}>
+                            Supprimer le compte
+                          </MenuItem>
+                        </>
                       )}
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <CreateUserForm
-        onCreated={(username, password) => {
-          if (password) setSecret({ username, password });
-          else setMessage({ kind: 'info', text: `Compte ${username} créé` });
-          void load();
-        }}
-      />
-
-      <section>
-        <h2>Événements de compte récents</h2>
-        <p>
-          <a href="#/admin/audit">Audit global</a> : comptes et tous les boards, filtrable et
-          exportable.
-        </p>
-        <div className="admin-scroll">
-          <table>
-            <tbody>
-              {events.map((event) => (
-                <tr key={event.id}>
-                  <td>{new Date(event.createdAt).toLocaleString()}</td>
-                  <td>{EVENT_LABELS[event.action] ?? event.action}</td>
-                  <td>
-                    {event.objectId
-                      ? (names.get(event.objectId) ?? String(event.metadata.username ?? '—'))
-                      : '—'}
-                  </td>
-                  <td>
-                    <small>
-                      {event.actorType === 'user'
-                        ? `par ${names.get(event.actor) ?? event.actor}`
-                        : event.actorType === 'system'
-                          ? 'système'
-                          : `IP ${event.actor}`}
-                    </small>
+                    </Menu>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </section>
-    </main>
+
+        <section className="card">
+          <div className="card-body form-stack">
+            <div className="section-title">
+              <h2>Activité récente des comptes</h2>
+              <a href="#/admin/audit">Tout l’audit →</a>
+            </div>
+            <ul className="activity">
+              {events.slice(0, 12).map((event) => (
+                <li key={event.id}>
+                  <span
+                    className={`activity-dot${event.action === 'auth.login_failed' ? ' danger' : ''}`}
+                  />
+                  <span>
+                    <strong>{EVENT_LABELS[event.action] ?? event.action}</strong>{' '}
+                    {event.objectId
+                      ? (names.get(event.objectId) ?? String(event.metadata.username ?? ''))
+                      : ''}
+                    <span className="subtle">
+                      {' · '}
+                      {event.actorType === 'user'
+                        ? `par ${names.get(event.actor) ?? event.actor}`
+                        : event.actorType === 'system'
+                          ? 'système'
+                          : `IP ${event.actor}`}
+                    </span>
+                  </span>
+                  <time className="subtle">{new Date(event.createdAt).toLocaleString()}</time>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      </div>
+
+      {creating && (
+        <Modal
+          title="Nouveau compte"
+          description="Un mot de passe temporaire est généré ; il devra être changé à la première connexion."
+          onClose={() => setCreating(false)}
+        >
+          <CreateUserForm
+            onCancel={() => setCreating(false)}
+            onCreated={(username, password) => {
+              setCreating(false);
+              if (password) setSecret({ username, password });
+              else setMessage({ kind: 'info', text: `Compte ${username} créé` });
+              void load();
+            }}
+          />
+        </Modal>
+      )}
+
+      {secret && (
+        <Modal
+          title="Mot de passe temporaire"
+          description={
+            <>
+              À transmettre à <strong>{secret.username}</strong> : il ne sera plus affiché.
+            </>
+          }
+          onClose={() => setSecret(null)}
+        >
+          <div className="secret">
+            <code>{secret.password}</code>
+            <Button
+              size="sm"
+              icon="copy"
+              onClick={() => void copyText(secret.password, 'Mot de passe copié')}
+            >
+              Copier
+            </Button>
+          </div>
+          <div className="modal-actions">
+            <Button variant="primary" onClick={() => setSecret(null)}>
+              C’est noté
+            </Button>
+          </div>
+        </Modal>
+      )}
+    </AppShell>
   );
 }
 
 function CreateUserForm({
   onCreated,
+  onCancel,
 }: {
   onCreated: (username: string, password?: string) => void;
+  onCancel: () => void;
 }) {
   const [values, setValues] = useState({ username: '', displayName: '', email: '', role: 'user' });
   const [error, setError] = useState<string | null>(null);
@@ -304,37 +408,52 @@ function CreateUserForm({
   };
 
   const field = (name: 'username' | 'displayName' | 'email') => ({
+    className: 'input',
     value: values[name],
     onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
       setValues({ ...values, [name]: event.target.value }),
   });
 
   return (
-    <section>
-      <h2>Créer un compte</h2>
-      <form className="admin-create" onSubmit={(event) => void submit(event)}>
-        <input
-          placeholder="nom-utilisateur"
-          autoCapitalize="none"
-          required
-          {...field('username')}
-        />
-        <input placeholder="Nom affiché" required {...field('displayName')} />
-        <input placeholder="e-mail (facultatif)" type="email" {...field('email')} />
-        <select
-          value={values.role}
-          onChange={(event) => setValues({ ...values, role: event.target.value })}
-        >
-          <option value="user">Utilisateur</option>
-          <option value="admin">Admin</option>
-        </select>
-        <button type="submit">Créer</button>
-      </form>
-      <p className="admin-hint">
-        Un mot de passe temporaire est généré ; il faudra le changer à la connexion.
-      </p>
-      {error && <p className="admin-message error">{error}</p>}
-    </section>
+    <form className="form-stack" onSubmit={(event) => void submit(event)}>
+      <div className="form-row">
+        <Field label="Nom d’utilisateur">
+          <input
+            placeholder="camille.martin"
+            autoCapitalize="none"
+            required
+            // biome-ignore lint/a11y/noAutofocus: fenêtre ouverte à la demande de l'utilisateur
+            autoFocus
+            {...field('username')}
+          />
+        </Field>
+        <Field label="Nom affiché">
+          <input placeholder="Camille Martin" required {...field('displayName')} />
+        </Field>
+      </div>
+      <div className="form-row">
+        <Field label="E-mail" hint="Facultatif">
+          <input placeholder="camille@exemple.fr" type="email" {...field('email')} />
+        </Field>
+        <Field label="Rôle">
+          <select
+            className="select"
+            value={values.role}
+            onChange={(event) => setValues({ ...values, role: event.target.value })}
+          >
+            <option value="user">Utilisateur</option>
+            <option value="admin">Admin</option>
+          </select>
+        </Field>
+      </div>
+      {error && <div className="alert alert-error">{error}</div>}
+      <div className="modal-actions">
+        <Button onClick={onCancel}>Annuler</Button>
+        <Button type="submit" variant="primary">
+          Créer le compte
+        </Button>
+      </div>
+    </form>
   );
 }
 

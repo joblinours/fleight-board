@@ -10,8 +10,25 @@ import {
   type StandardFormat,
   standardCanvas,
 } from '@fleight/protocol';
-import { type FormEvent, useCallback, useEffect, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiRequestError, api } from '../auth/api';
+import { useSession } from '../auth/session';
+import { PageHeader } from '../layout/AppShell';
+import {
+  Avatar,
+  Badge,
+  Button,
+  colorFor,
+  copyText,
+  EmptyState,
+  Field,
+  Menu,
+  MenuItem,
+  Modal,
+  Spinner,
+  toast,
+} from '../ui/components';
+import { Icon } from '../ui/Icon';
 
 const FORMATS: Array<{ value: StandardFormat | 'custom'; label: string }> = [
   { value: 'A4', label: 'A4' },
@@ -24,213 +41,472 @@ const FORMATS: Array<{ value: StandardFormat | 'custom'; label: string }> = [
 
 /** Libellé court du format d'un board. */
 export function canvasLabel(canvas: BoardCanvas): string {
-  if (canvas.kind === 'infinite') return 'Infini';
+  if (canvas.kind === 'infinite') return 'Canvas infini';
   const size = `${canvas.width} × ${canvas.height}`;
-  return canvas.format === 'custom' ? `Personnalisé ${size}` : `${canvas.format} · ${size}`;
+  return canvas.format === 'custom' ? `Personnalisé · ${size}` : `${canvas.format} · ${size}`;
+}
+
+const relative = new Intl.RelativeTimeFormat('fr', { numeric: 'auto' });
+
+/** « il y a 5 minutes », « hier »… */
+export function timeAgo(iso: string): string {
+  const seconds = (new Date(iso).getTime() - Date.now()) / 1000;
+  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+    ['year', 31_536_000],
+    ['month', 2_592_000],
+    ['week', 604_800],
+    ['day', 86_400],
+    ['hour', 3600],
+    ['minute', 60],
+  ];
+  for (const [unit, size] of units) {
+    if (Math.abs(seconds) >= size) return relative.format(Math.round(seconds / size), unit);
+  }
+  return 'à l’instant';
 }
 
 function describe(error: unknown): string {
   return error instanceof ApiRequestError ? error.message : 'Erreur inattendue';
 }
 
-/** Rejoindre par code, créer un board, et liste de ses boards. */
+function shareLink(board: BoardSummary): string {
+  return `${window.location.origin}${window.location.pathname}#/join/${board.code}`;
+}
+
+type Tab = 'all' | 'mine' | 'shared' | 'hidden';
+
+/** Tableau de bord : boards possédés et partagés, création, rejoindre par code. */
 export function BoardsSection() {
+  const session = useSession();
+  const userId = session.status === 'authenticated' ? session.user.id : undefined;
   const [boards, setBoards] = useState<BoardSummary[] | null>(null);
-  const [showHidden, setShowHidden] = useState(false);
+  const [tab, setTab] = useState<Tab>('all');
+  const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [modal, setModal] = useState<
+    | { kind: 'create' }
+    | { kind: 'join' }
+    | { kind: 'rename'; board: BoardSummary }
+    | { kind: 'delete'; board: BoardSummary }
+    | null
+  >(null);
 
   const load = useCallback(async () => {
     try {
-      const data = await api(`/boards${showHidden ? '?hidden=true' : ''}`);
+      const data = await api('/boards?hidden=true');
       setBoards(BoardsResponseSchema.parse(data).boards);
     } catch (caught) {
       setError(describe(caught));
     }
-  }, [showHidden]);
+  }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const act = async (action: () => Promise<unknown>) => {
+  const act = async (action: () => Promise<unknown>, done?: string) => {
     setError(null);
     try {
       await action();
+      if (done) toast(done, 'check');
     } catch (caught) {
       setError(describe(caught));
     }
     await load();
   };
 
-  return (
-    <section className="boards">
-      <JoinByCode />
-      <CreateBoard />
+  const counts = useMemo(() => {
+    const list = boards ?? [];
+    return {
+      all: list.filter((board) => !board.hidden).length,
+      mine: list.filter((board) => !board.hidden && board.ownerId === userId).length,
+      shared: list.filter((board) => !board.hidden && board.ownerId !== userId).length,
+      hidden: list.filter((board) => board.hidden).length,
+    };
+  }, [boards, userId]);
 
-      <div className="boards-head">
-        <h2>Mes whiteboards et boards partagés</h2>
-        <label>
+  const visible = (boards ?? []).filter((board) => {
+    if (tab === 'hidden' ? !board.hidden : board.hidden) return false;
+    if (tab === 'mine' && board.ownerId !== userId) return false;
+    if (tab === 'shared' && board.ownerId === userId) return false;
+    const query = search.trim().toLowerCase();
+    return (
+      !query || `${board.name} ${board.description} ${board.code}`.toLowerCase().includes(query)
+    );
+  });
+
+  const tabs: Array<[Tab, string]> = [
+    ['all', 'Tous'],
+    ['mine', 'Mes tableaux'],
+    ['shared', 'Partagés avec moi'],
+    ['hidden', 'Masqués'],
+  ];
+
+  return (
+    <div className="page">
+      <PageHeader
+        title="Tableaux"
+        subtitle="Vos whiteboards et ceux partagés avec vous."
+        actions={
+          <>
+            <Button icon="hash" onClick={() => setModal({ kind: 'join' })}>
+              Rejoindre par code
+            </Button>
+            <Button variant="primary" icon="plus" onClick={() => setModal({ kind: 'create' })}>
+              Nouveau tableau
+            </Button>
+          </>
+        }
+      />
+
+      <div className="toolbar-row">
+        <div className="tabs" role="tablist">
+          {tabs.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={tab === value}
+              className={`tab${tab === value ? ' active' : ''}`}
+              onClick={() => setTab(value)}
+            >
+              {label}
+              <span className="tab-count">{counts[value]}</span>
+            </button>
+          ))}
+        </div>
+        <div className="search">
+          <Icon name="search" size={16} />
           <input
-            type="checkbox"
-            checked={showHidden}
-            onChange={(event) => setShowHidden(event.target.checked)}
-          />{' '}
-          Afficher les boards masqués
-        </label>
+            className="input input-sm"
+            type="search"
+            placeholder="Rechercher un tableau…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
       </div>
-      {error && <p className="boards-error">{error}</p>}
-      {boards === null && <p>Chargement…</p>}
-      {boards?.length === 0 && <p className="boards-empty">Aucun board pour l’instant.</p>}
-      <ul className="boards-list">
-        {boards?.map((board) => (
+
+      {error && <div className="alert alert-error">{error}</div>}
+      {boards === null && !error && (
+        <div className="page-loading">
+          <Spinner />
+        </div>
+      )}
+      {boards !== null && visible.length === 0 && (
+        <EmptyState
+          icon={tab === 'hidden' ? 'eyeOff' : 'layers'}
+          title={
+            search
+              ? 'Aucun tableau ne correspond'
+              : tab === 'hidden'
+                ? 'Aucun tableau masqué'
+                : tab === 'shared'
+                  ? 'Rien n’est partagé avec vous pour l’instant'
+                  : 'Créez votre premier tableau'
+          }
+          action={
+            !search &&
+            tab !== 'hidden' &&
+            tab !== 'shared' && (
+              <Button variant="primary" icon="plus" onClick={() => setModal({ kind: 'create' })}>
+                Nouveau tableau
+              </Button>
+            )
+          }
+        >
+          {!search && tab === 'shared'
+            ? 'Rejoignez un tableau avec son code, ou demandez à être ajouté comme membre.'
+            : !search && tab !== 'hidden'
+              ? 'Un canvas infini ou une page au format A4, 16:9… pour dessiner et collaborer en temps réel.'
+              : undefined}
+        </EmptyState>
+      )}
+
+      <ul className="board-grid">
+        {visible.map((board) => (
           <BoardCard
             key={board.id}
             board={board}
-            onRename={(name) =>
-              act(() => api(`/boards/${board.id}`, { method: 'PATCH', body: { name } }))
-            }
+            isOwner={board.ownerId === userId}
+            onRename={() => setModal({ kind: 'rename', board })}
             onToggleHidden={() =>
-              act(() =>
-                api(`/boards/${board.id}`, { method: 'PATCH', body: { hidden: !board.hidden } }),
+              act(
+                () =>
+                  api(`/boards/${board.id}`, { method: 'PATCH', body: { hidden: !board.hidden } }),
+                board.hidden ? 'Tableau réaffiché' : 'Tableau masqué',
               )
             }
-            onDelete={() => {
-              if (
-                window.confirm(
-                  `Supprimer définitivement « ${board.name} » et tout son contenu ? Les participants connectés seront déconnectés.`,
-                )
-              ) {
-                void act(() => api(`/boards/${board.id}`, { method: 'DELETE' }));
-              }
-            }}
+            onDelete={() => setModal({ kind: 'delete', board })}
           />
         ))}
       </ul>
-    </section>
+
+      {modal?.kind === 'create' && <CreateBoardModal onClose={() => setModal(null)} />}
+      {modal?.kind === 'join' && <JoinModal onClose={() => setModal(null)} />}
+      {modal?.kind === 'rename' && (
+        <RenameModal
+          board={modal.board}
+          onClose={() => setModal(null)}
+          onSave={(changes) =>
+            act(
+              () => api(`/boards/${modal.board.id}`, { method: 'PATCH', body: changes }),
+              'Tableau mis à jour',
+            ).then(() => setModal(null))
+          }
+        />
+      )}
+      {modal?.kind === 'delete' && (
+        <Modal
+          title="Supprimer ce tableau ?"
+          description={
+            <>
+              « {modal.board.name} » et tout son contenu seront supprimés définitivement. Les
+              participants connectés seront déconnectés.
+            </>
+          }
+          onClose={() => setModal(null)}
+        >
+          <div className="modal-actions">
+            <Button onClick={() => setModal(null)}>Annuler</Button>
+            <Button
+              variant="danger"
+              icon="trash"
+              onClick={() =>
+                void act(
+                  () => api(`/boards/${modal.board.id}`, { method: 'DELETE' }),
+                  'Tableau supprimé',
+                ).then(() => setModal(null))
+              }
+            >
+              Supprimer
+            </Button>
+          </div>
+        </Modal>
+      )}
+    </div>
   );
 }
 
 function BoardCard({
   board,
+  isOwner,
   onRename,
   onToggleHidden,
   onDelete,
 }: {
   board: BoardSummary;
-  onRename: (name: string) => Promise<void>;
+  isOwner: boolean;
+  onRename: () => void;
   onToggleHidden: () => void;
   onDelete: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(board.name);
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (name.trim() && name.trim() !== board.name) await onRename(name.trim());
-    setEditing(false);
-  };
-
+  const accent = colorFor(board.id);
   return (
-    <li className={board.hidden ? 'hidden-board' : undefined}>
-      <div className="boards-card-head">
-        {editing ? (
-          <form onSubmit={(event) => void submit(event)}>
-            <input
-              value={name}
-              maxLength={80}
-              // biome-ignore lint/a11y/noAutofocus: champ ouvert à la demande de l'utilisateur
-              autoFocus
-              onChange={(event) => setName(event.target.value)}
-            />
-            <button type="submit">OK</button>
-          </form>
+    <li className={`board-card${board.hidden ? ' is-hidden' : ''}`}>
+      <a
+        href={`#/board/${board.id}`}
+        className="board-card-link"
+        aria-label={`Ouvrir ${board.name}`}
+      >
+        <div
+          className="board-thumb"
+          style={{
+            background: `radial-gradient(circle at 20% 20%, ${accent}33, transparent 55%), radial-gradient(circle at 85% 80%, ${accent}26, transparent 50%), var(--surface-2)`,
+          }}
+        >
+          <span
+            className={`board-thumb-page${board.canvas.kind === 'infinite' ? ' infinite' : ''}`}
+            style={
+              board.canvas.kind === 'standard'
+                ? { aspectRatio: `${board.canvas.width} / ${board.canvas.height}` }
+                : undefined
+            }
+          >
+            <Icon name={board.canvas.kind === 'infinite' ? 'layers' : 'frame'} size={18} />
+          </span>
+        </div>
+      </a>
+      <div className="board-card-body">
+        <div className="board-card-title">
+          <a href={`#/board/${board.id}`}>{board.name}</a>
+          <Menu
+            trigger={(props) => (
+              <Button variant="ghost" size="sm" icon="more" aria-label="Actions" {...props} />
+            )}
+          >
+            <MenuItem icon="chevronRight" href={`#/board/${board.id}`}>
+              Ouvrir
+            </MenuItem>
+            <MenuItem icon="link" onClick={() => void copyText(shareLink(board), 'Lien copié')}>
+              Copier le lien de partage
+            </MenuItem>
+            <MenuItem icon="hash" onClick={() => void copyText(board.code, 'Code copié')}>
+              Copier le code {board.code}
+            </MenuItem>
+            {can(board.role, 'board.audit') && (
+              <MenuItem icon="history" href={`#/audit/${board.id}`}>
+                Audit
+              </MenuItem>
+            )}
+            {can(board.role, 'board.settings') && (
+              <>
+                <div className="divider" />
+                <MenuItem icon="pencilLine" onClick={onRename}>
+                  Renommer
+                </MenuItem>
+                <MenuItem icon={board.hidden ? 'eye' : 'eyeOff'} onClick={onToggleHidden}>
+                  {board.hidden ? 'Réafficher' : 'Masquer'}
+                </MenuItem>
+              </>
+            )}
+            {can(board.role, 'board.delete') && (
+              <MenuItem icon="trash" onClick={onDelete} danger>
+                Supprimer
+              </MenuItem>
+            )}
+          </Menu>
+        </div>
+        {board.description ? (
+          <p className="board-card-description">{board.description}</p>
         ) : (
-          <a href={`#/board/${board.id}`} className="boards-name">
-            {board.name}
-          </a>
+          <p className="board-card-description subtle">{canvasLabel(board.canvas)}</p>
         )}
-        <span className="boards-code" title="Code pour rejoindre">
-          {board.code}
-        </span>
-      </div>
-      {board.description && <p className="boards-description">{board.description}</p>}
-      <p className="boards-meta">
-        {canvasLabel(board.canvas)} · modifié le {new Date(board.updatedAt).toLocaleString()}
-        {board.hidden && ' · masqué'}
-        {board.role && board.role !== 'owner' && (
-          <>
-            {' · '}
-            <span className="boards-shared">
-              partagé par {board.ownerName ?? 'un compte supprimé'} · {ROLE_LABELS[board.role]}
+        <div className="board-card-meta">
+          {isOwner ? (
+            <span className="subtle">Modifié {timeAgo(board.updatedAt)}</span>
+          ) : (
+            <span className="board-card-owner">
+              <Avatar name={board.ownerName ?? '?'} size="sm" />
+              <span className="subtle">{board.ownerName ?? 'Compte supprimé'}</span>
             </span>
-          </>
-        )}
-      </p>
-      <div className="boards-actions">
-        <a href={`#/board/${board.id}`}>Ouvrir</a>
-        {can(board.role, 'board.audit') && <a href={`#/audit/${board.id}`}>Audit</a>}
-        {can(board.role, 'board.settings') && (
-          <>
-            <button type="button" onClick={() => setEditing(!editing)}>
-              Renommer
-            </button>
-            <button type="button" onClick={onToggleHidden}>
-              {board.hidden ? 'Réafficher' : 'Masquer'}
-            </button>
-          </>
-        )}
-        {can(board.role, 'board.delete') && (
-          <button type="button" className="danger" onClick={onDelete}>
-            Supprimer
-          </button>
-        )}
+          )}
+          <span className="board-card-badges">
+            {board.visibility === 'private' ? (
+              <span title="Session privée" className="subtle">
+                <Icon name="lock" size={14} />
+              </span>
+            ) : (
+              <span title="Session publique" className="subtle">
+                <Icon name="globe" size={14} />
+              </span>
+            )}
+            {!isOwner && board.role && <Badge tone="primary">{ROLE_LABELS[board.role]}</Badge>}
+            {board.hidden && <Badge>Masqué</Badge>}
+          </span>
+        </div>
       </div>
     </li>
   );
 }
 
-function JoinByCode() {
+function RenameModal({
+  board,
+  onClose,
+  onSave,
+}: {
+  board: BoardSummary;
+  onClose: () => void;
+  onSave: (changes: { name: string; description: string }) => void;
+}) {
+  const [name, setName] = useState(board.name);
+  const [description, setDescription] = useState(board.description);
+  return (
+    <Modal title="Renommer le tableau" onClose={onClose}>
+      <form
+        className="form-stack"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (name.trim()) onSave({ name: name.trim(), description: description.trim() });
+        }}
+      >
+        <Field label="Nom">
+          <input
+            className="input"
+            value={name}
+            maxLength={80}
+            // biome-ignore lint/a11y/noAutofocus: fenêtre ouverte à la demande de l'utilisateur
+            autoFocus
+            onChange={(event) => setName(event.target.value)}
+          />
+        </Field>
+        <Field label="Description">
+          <textarea
+            className="textarea"
+            value={description}
+            maxLength={500}
+            rows={3}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </Field>
+        <div className="modal-actions">
+          <Button onClick={onClose}>Annuler</Button>
+          <Button type="submit" variant="primary">
+            Enregistrer
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function JoinModal({ onClose }: { onClose: () => void }) {
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
     const parsed = BoardCodeSchema.safeParse(code);
     if (!parsed.success) {
-      setError('Code à 6 caractères');
+      setError('Le code compte 6 caractères');
       return;
     }
+    setBusy(true);
     try {
       const { board } = BoardResponseSchema.parse(await api(`/boards/code/${parsed.data}`));
       window.location.hash = `#/board/${board.id}`;
     } catch (caught) {
       setError(describe(caught));
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
-    <form className="boards-join" onSubmit={(event) => void submit(event)}>
-      <label htmlFor="board-code">Rejoindre un board</label>
-      <div>
+    <Modal
+      title="Rejoindre un tableau"
+      description="Saisissez le code à 6 caractères communiqué par son propriétaire."
+      onClose={onClose}
+    >
+      <form className="form-stack" onSubmit={(event) => void submit(event)}>
         <input
           id="board-code"
+          className="input input-code"
           value={code}
-          placeholder="CODE"
+          placeholder="K7P4X2"
           maxLength={6}
           autoCapitalize="characters"
           autoComplete="off"
+          // biome-ignore lint/a11y/noAutofocus: fenêtre ouverte à la demande de l'utilisateur
+          autoFocus
+          aria-label="Code du tableau"
           onChange={(event) => setCode(event.target.value.toUpperCase())}
         />
-        <button type="submit">Rejoindre</button>
-      </div>
-      {error && <p className="boards-error">{error}</p>}
-    </form>
+        {error && <div className="alert alert-error">{error}</div>}
+        <div className="modal-actions">
+          <Button onClick={onClose}>Annuler</Button>
+          <Button type="submit" variant="primary" disabled={busy} iconRight="chevronRight">
+            Rejoindre
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
-function CreateBoard() {
-  const [open, setOpen] = useState(false);
+function CreateBoardModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [kind, setKind] = useState<'infinite' | 'standard'>('infinite');
@@ -238,6 +514,7 @@ function CreateBoard() {
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
   const [size, setSize] = useState({ width: '1920', height: '1080' });
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const canvas = (): BoardCanvas => {
     if (kind === 'infinite') return { kind: 'infinite' };
@@ -265,6 +542,7 @@ function CreateBoard() {
       );
       return;
     }
+    setBusy(true);
     try {
       const { board } = BoardResponseSchema.parse(
         await api('/boards', { method: 'POST', body: parsed.data }),
@@ -272,119 +550,135 @@ function CreateBoard() {
       window.location.hash = `#/board/${board.id}`;
     } catch (caught) {
       setError(describe(caught));
+      setBusy(false);
     }
   };
 
-  if (!open) {
-    return (
-      <p>
-        <button type="button" className="boards-new" onClick={() => setOpen(true)}>
-          + Nouveau whiteboard
-        </button>
-      </p>
-    );
-  }
-
   return (
-    <form className="boards-create" onSubmit={(event) => void submit(event)}>
-      <h2>Nouveau whiteboard</h2>
-      <label>
-        Nom
-        <input
-          value={name}
-          maxLength={80}
-          required
-          onChange={(event) => setName(event.target.value)}
-        />
-      </label>
-      <label>
-        Description (facultative)
-        <textarea
-          value={description}
-          maxLength={500}
-          rows={2}
-          onChange={(event) => setDescription(event.target.value)}
-        />
-      </label>
-      <fieldset>
-        <legend>Canvas</legend>
-        <label>
+    <Modal
+      title="Nouveau tableau"
+      description="Choisissez un nom et la surface de travail."
+      onClose={onClose}
+      wide
+    >
+      <form className="form-stack" onSubmit={(event) => void submit(event)}>
+        <Field label="Nom">
           <input
-            type="radio"
-            name="kind"
-            checked={kind === 'infinite'}
-            onChange={() => setKind('infinite')}
-          />{' '}
-          Infini
-        </label>
-        <label>
-          <input
-            type="radio"
-            name="kind"
-            checked={kind === 'standard'}
-            onChange={() => setKind('standard')}
-          />{' '}
-          Page de taille fixe
-        </label>
-        {kind === 'standard' && (
-          <div className="boards-format">
-            <select
-              value={format}
-              onChange={(event) => {
-                const next = event.target.value as StandardFormat | 'custom';
-                setFormat(next);
-                // Orientation naturelle du format : portrait pour le papier, paysage pour l'écran.
-                if (next !== 'custom') {
-                  const { width, height } = STANDARD_FORMATS[next];
-                  setOrientation(height >= width ? 'portrait' : 'landscape');
-                }
-              }}
+            className="input"
+            value={name}
+            maxLength={80}
+            placeholder="Ex. : Architecture réseau"
+            required
+            // biome-ignore lint/a11y/noAutofocus: fenêtre ouverte à la demande de l'utilisateur
+            autoFocus
+            onChange={(event) => setName(event.target.value)}
+          />
+        </Field>
+        <Field label="Description" hint="Facultative">
+          <textarea
+            className="textarea"
+            value={description}
+            maxLength={500}
+            rows={2}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </Field>
+
+        <div className="field">
+          <span className="field-label">Surface</span>
+          <div className="choice-grid">
+            <button
+              type="button"
+              className={`choice${kind === 'infinite' ? ' selected' : ''}`}
+              onClick={() => setKind('infinite')}
             >
-              {FORMATS.map(({ value, label }) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
+              <Icon name="layers" size={20} />
+              <strong>Canvas infini</strong>
+              <span>Zoom et déplacement libres, sans limite.</span>
+            </button>
+            <button
+              type="button"
+              className={`choice${kind === 'standard' ? ' selected' : ''}`}
+              onClick={() => setKind('standard')}
+            >
+              <Icon name="frame" size={20} />
+              <strong>Page de taille fixe</strong>
+              <span>A4, A3, 16:9… pour imprimer ou présenter.</span>
+            </button>
+          </div>
+        </div>
+
+        {kind === 'standard' && (
+          <div className="form-row">
+            <Field label="Format">
+              <select
+                className="select"
+                value={format}
+                onChange={(event) => {
+                  const next = event.target.value as StandardFormat | 'custom';
+                  setFormat(next);
+                  // Orientation naturelle du format : portrait pour le papier, paysage pour l'écran.
+                  if (next !== 'custom') {
+                    const { width, height } = STANDARD_FORMATS[next];
+                    setOrientation(height >= width ? 'portrait' : 'landscape');
+                  }
+                }}
+              >
+                {FORMATS.map(({ value, label }) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </Field>
             {format === 'custom' ? (
               <>
-                <input
-                  type="number"
-                  min={100}
-                  max={20000}
-                  value={size.width}
-                  aria-label="Largeur"
-                  onChange={(event) => setSize({ ...size, width: event.target.value })}
-                />
-                ×
-                <input
-                  type="number"
-                  min={100}
-                  max={20000}
-                  value={size.height}
-                  aria-label="Hauteur"
-                  onChange={(event) => setSize({ ...size, height: event.target.value })}
-                />
+                <Field label="Largeur">
+                  <input
+                    className="input"
+                    type="number"
+                    min={100}
+                    max={20000}
+                    value={size.width}
+                    onChange={(event) => setSize({ ...size, width: event.target.value })}
+                  />
+                </Field>
+                <Field label="Hauteur">
+                  <input
+                    className="input"
+                    type="number"
+                    min={100}
+                    max={20000}
+                    value={size.height}
+                    onChange={(event) => setSize({ ...size, height: event.target.value })}
+                  />
+                </Field>
               </>
             ) : (
-              <select
-                value={orientation}
-                onChange={(event) => setOrientation(event.target.value as 'portrait' | 'landscape')}
-              >
-                <option value="portrait">Portrait</option>
-                <option value="landscape">Paysage</option>
-              </select>
+              <Field label="Orientation">
+                <select
+                  className="select"
+                  value={orientation}
+                  onChange={(event) =>
+                    setOrientation(event.target.value as 'portrait' | 'landscape')
+                  }
+                >
+                  <option value="portrait">Portrait</option>
+                  <option value="landscape">Paysage</option>
+                </select>
+              </Field>
             )}
           </div>
         )}
-      </fieldset>
-      {error && <p className="boards-error">{error}</p>}
-      <div className="boards-actions">
-        <button type="submit">Créer et ouvrir</button>
-        <button type="button" onClick={() => setOpen(false)}>
-          Annuler
-        </button>
-      </div>
-    </form>
+
+        {error && <div className="alert alert-error">{error}</div>}
+        <div className="modal-actions">
+          <Button onClick={onClose}>Annuler</Button>
+          <Button type="submit" variant="primary" disabled={busy}>
+            Créer et ouvrir
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

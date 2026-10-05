@@ -1,6 +1,7 @@
 import type { BoardEditor, StyleChange, ToolName } from '@fleight/canvas';
 import type { BoardObject } from '@fleight/protocol';
 import { useState } from 'react';
+import { Icon, type IconName } from '../ui/Icon';
 
 const COLORS = ['#1f2937', '#2563eb', '#dc2626', '#16a34a', '#f59e0b', '#7c3aed', '#ffffff'];
 const FILLS = ['transparent', '#ffffff', '#dbeafe', '#fee2e2', '#dcfce7', '#fef3c7', '#ede9fe'];
@@ -122,70 +123,58 @@ export function PropertiesPanel({ editor, tool }: { editor: BoardEditor | null; 
   };
 
   return (
-    <aside className="board-properties" aria-label="Propriétés">
+    <aside className="properties" aria-label="Propriétés">
       {showActions && (
-        <div className="board-actions" role="toolbar" aria-label="Actions sur la sélection">
+        <div className="properties-actions" role="toolbar" aria-label="Actions sur la sélection">
           {objects.length > 0 && (
             <>
-              <button
-                type="button"
-                title="Copier (Ctrl/⌘+C)"
+              <ActionButton
+                icon="copy"
+                label="Copier (Ctrl/⌘+C)"
                 onClick={() => act(() => copy(false))}
-              >
-                Copier
-              </button>
-              <button type="button" title="Couper (Ctrl/⌘+X)" onClick={() => act(() => copy(true))}>
-                Couper
-              </button>
+              />
+              <ActionButton
+                icon="scissors"
+                label="Couper (Ctrl/⌘+X)"
+                onClick={() => act(() => copy(true))}
+              />
             </>
           )}
-          <button
-            type="button"
-            title="Coller (Ctrl/⌘+V)"
+          <ActionButton
+            icon="clipboard"
+            label="Coller (Ctrl/⌘+V)"
             disabled={!editor.canPaste}
             onClick={() => act(() => editor.paste())}
-          >
-            Coller
-          </button>
+          />
           {objects.length > 0 && (
             <>
-              <button
-                type="button"
-                title="Dupliquer (Ctrl/⌘+D)"
+              <ActionButton
+                icon="duplicate"
+                label="Dupliquer (Ctrl/⌘+D)"
                 onClick={() => act(() => editor.duplicate())}
-              >
-                Dupliquer
-              </button>
-              <button
-                type="button"
-                title="Grouper (Ctrl/⌘+G)"
+              />
+              <ActionButton
+                icon="group"
+                label="Grouper (Ctrl/⌘+G)"
                 disabled={!editor.canGroup}
                 onClick={() => act(() => editor.group())}
-              >
-                Grouper
-              </button>
-              <button
-                type="button"
-                title="Dégrouper (Ctrl/⌘+Maj+G)"
+              />
+              <ActionButton
+                icon="ungroup"
+                label="Dégrouper (Ctrl/⌘+Maj+G)"
                 disabled={!editor.canUngroup}
                 onClick={() => act(() => editor.ungroup())}
-              >
-                Dégrouper
-              </button>
-              <button
-                type="button"
-                title="Premier plan (Ctrl/⌘+])"
+              />
+              <ActionButton
+                icon="bringFront"
+                label="Premier plan (Ctrl/⌘+])"
                 onClick={() => act(() => editor.bringToFront())}
-              >
-                Premier plan
-              </button>
-              <button
-                type="button"
-                title="Arrière-plan (Ctrl/⌘+[)"
+              />
+              <ActionButton
+                icon="sendBack"
+                label="Arrière-plan (Ctrl/⌘+[)"
                 onClick={() => act(() => editor.sendToBack())}
-              >
-                Arrière-plan
-              </button>
+              />
             </>
           )}
         </div>
@@ -314,5 +303,31 @@ function Swatches({
         />
       ))}
     </>
+  );
+}
+
+/** Action sur la sélection : bouton-icône avec infobulle. */
+function ActionButton({
+  icon,
+  label,
+  onClick,
+  disabled,
+}: {
+  icon: IconName;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className="tool-button small"
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <Icon name={icon} size={17} />
+    </button>
   );
 }

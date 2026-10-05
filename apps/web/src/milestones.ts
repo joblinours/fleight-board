@@ -27,7 +27,7 @@ export const MILESTONES: Milestone[] = [
     href: '#/',
     linkLabel: 'Cette page',
     needsApi: true,
-    steps: ['L’encart « API » ci-dessus doit indiquer « prête ».'],
+    steps: ['L’indicateur « API » en haut de la page doit indiquer « prête ».'],
   },
   {
     id: 'M0.2',
@@ -189,7 +189,7 @@ export const MILESTONES: Milestone[] = [
     title: 'Whiteboards',
     summary: 'Créer, lister, renommer, masquer, supprimer ses boards ; rejoindre par code.',
     href: '#/',
-    linkLabel: 'Mes whiteboards (ci-dessus)',
+    linkLabel: 'Ouvrir mes tableaux',
     needsApi: true,
     multiDevice: true,
     steps: [
@@ -205,7 +205,7 @@ export const MILESTONES: Milestone[] = [
     title: 'Objets complets',
     summary: 'Ligne, flèche, polygone, images, surligneur, gomme et panneau de propriétés.',
     href: '#/',
-    linkLabel: 'Ouvrir un de mes boards (ci-dessus)',
+    linkLabel: 'Ouvrir mes tableaux',
     needsApi: true,
     multiDevice: true,
     steps: [
@@ -222,7 +222,7 @@ export const MILESTONES: Milestone[] = [
     summary:
       'Rectangle de sélection et lasso, copier/coller/dupliquer, groupes, premier/arrière-plan et frames.',
     href: '#/',
-    linkLabel: 'Ouvrir un de mes boards (ci-dessus)',
+    linkLabel: 'Ouvrir mes tableaux',
     needsApi: true,
     multiDevice: true,
     steps: [
@@ -239,7 +239,7 @@ export const MILESTONES: Milestone[] = [
     summary:
       'Connecteurs orthogonaux avec routage simple, flèches, labels et reconnexion par glisser.',
     href: '#/',
-    linkLabel: 'Ouvrir un de mes boards (ci-dessus)',
+    linkLabel: 'Ouvrir mes tableaux',
     needsApi: true,
     multiDevice: true,
     steps: [
@@ -256,7 +256,7 @@ export const MILESTONES: Milestone[] = [
     summary:
       'Curseurs nommés et colorés, liste des participants, modes « Drawing only » / « Cursor visible ».',
     href: '#/',
-    linkLabel: 'Ouvrir un de mes boards (ci-dessus)',
+    linkLabel: 'Ouvrir mes tableaux',
     needsApi: true,
     multiDevice: true,
     steps: [
@@ -273,7 +273,7 @@ export const MILESTONES: Milestone[] = [
     summary:
       'Rôles Viewer < Editor < Presenter < Co-owner < Owner, gestion des membres, vérification serveur.',
     href: '#/',
-    linkLabel: 'Ouvrir un de mes boards (ci-dessus)',
+    linkLabel: 'Ouvrir mes tableaux',
     needsApi: true,
     multiDevice: true,
     steps: [
@@ -290,7 +290,7 @@ export const MILESTONES: Milestone[] = [
     summary:
       'Sessions publiques ou privées, demandes d’accès en temps réel, invités sans compte, accès temporaires.',
     href: '#/',
-    linkLabel: 'Ouvrir un de mes boards (ci-dessus)',
+    linkLabel: 'Ouvrir mes tableaux',
     needsApi: true,
     multiDevice: true,
     steps: [
@@ -310,11 +310,28 @@ export const MILESTONES: Milestone[] = [
     linkLabel: 'Audit global (Admin)',
     needsApi: true,
     steps: [
-      'Dans un board (Owner ou Co-owner) : lien « Audit » à côté de « Membres ».',
+      'Dans un board (Owner ou Co-owner) : menu « ⋯ » → « Audit », ou menu d’une carte du tableau de bord.',
       'Filtrer par famille (objets, board, membres et accès), recherche, période ; « Suivre en direct ».',
       'Cliquer sur un auteur ou un objet pour filtrer dessus ; « Entrées plus anciennes » pour paginer.',
       '« Exporter (CSV) » : le fichier s’ouvre dans un tableur.',
-      'Admin : « Audit global » (page Administration), périmètre comptes / boards, lien vers chaque board.',
+      'Admin : « Audit global » dans la barre latérale, périmètre comptes / tableaux, lien vers chaque tableau.',
+    ],
+  },
+  {
+    id: 'M1.9.5',
+    title: 'Interface (design system)',
+    summary:
+      'Nouvelle interface : thème clair/sombre, barre latérale, tableau de bord, menus, éditeur à îlots flottants.',
+    href: '#/',
+    linkLabel: 'Ouvrir mes tableaux',
+    needsApi: true,
+    steps: [
+      'Page d’accueil déconnectée : présentation et « Rejoindre avec un code ».',
+      'Connecté : barre latérale (Tableaux, Administration, Jalons), menu du compte en bas.',
+      'Tableau de bord : onglets Tous / Mes tableaux / Partagés / Masqués, recherche, menu « ⋯ » de chaque carte.',
+      'Éditeur : outils à gauche, annuler/rétablir en bas, « Partager » copie le lien, « Membres » ouvre le tiroir.',
+      'Passer le système en thème sombre : toute l’application suit.',
+      'Sur l’iPad (largeur tablette), la barre latérale se replie en icônes.',
     ],
   },
 ];

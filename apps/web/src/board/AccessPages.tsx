@@ -7,6 +7,9 @@ import {
 } from '@fleight/protocol';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { ApiRequestError, api } from '../auth/api';
+import { Logo } from '../layout/AppShell';
+import { Button, Field, Spinner } from '../ui/components';
+import { Icon } from '../ui/Icon';
 import { BoardPage } from './BoardPage';
 import { CloseCodes, connectWebSocket } from './websocket-transport';
 
@@ -53,23 +56,34 @@ export function WaitingRoom({
   }, [boardId, name]);
 
   return (
-    <main className="page-status access-page">
+    <AccessLayout>
       {denied ? (
         <>
-          <p>Votre demande d’accès a été refusée.</p>
-          <a href="#/">Accueil</a>
+          <span className="access-icon danger">
+            <Icon name="x" size={24} />
+          </span>
+          <h1>Demande refusée</h1>
+          <p className="muted">Le propriétaire du tableau n’a pas accepté votre demande.</p>
+          <a href="#/" className="btn btn-secondary">
+            Retour à l’accueil
+          </a>
         </>
       ) : (
         <>
-          <p className="access-waiting">Demande envoyée : en attente d’acceptation…</p>
-          <p className="access-hint">
-            Le propriétaire du board ou un Co-owner doit l’accepter. Cette page s’ouvrira
-            automatiquement.
+          <span className="access-icon pulse">
+            <Icon name="clock" size={24} />
+          </span>
+          <h1 className="access-waiting">En attente d’acceptation</h1>
+          <p className="muted access-hint">
+            Votre demande a été envoyée. Le propriétaire du tableau ou un Co-owner doit l’accepter :
+            la page s’ouvrira automatiquement.
           </p>
-          <a href="#/">Annuler</a>
+          <a href="#/" className="btn btn-ghost">
+            Annuler
+          </a>
         </>
       )}
-    </main>
+    </AccessLayout>
   );
 }
 
@@ -101,16 +115,20 @@ export function AccessRequestView({
 
   if (requested) return <WaitingRoom boardId={boardId} name={name} onGranted={onGranted} />;
   return (
-    <main className="page-status access-page">
-      <p>Ce board est privé : son propriétaire doit vous accepter.</p>
-      {error && <p className="boards-error">{error}</p>}
-      <p>
-        <button type="button" onClick={() => void request()}>
-          Demander l’accès
-        </button>
+    <AccessLayout>
+      <span className="access-icon">
+        <Icon name="lock" size={24} />
+      </span>
+      <h1>Tableau privé</h1>
+      <p className="muted access-hint">
+        Son propriétaire doit vous accepter avant que vous puissiez l’ouvrir.
       </p>
-      <a href="#/">Accueil</a>
-    </main>
+      {error && <div className="alert alert-error">{error}</div>}
+      <Button variant="primary" size="lg" icon="key" onClick={() => void request()}>
+        Demander l’accès
+      </Button>
+      <a href="#/">Retour aux tableaux</a>
+    </AccessLayout>
   );
 }
 
@@ -145,34 +163,45 @@ export function GuestJoinForm({ code: initialCode }: { code?: string }) {
   };
 
   return (
-    <form className="guest-join" onSubmit={(event) => void submit(event)}>
-      <h2>Rejoindre sans compte</h2>
+    <form className="guest-join form-stack" onSubmit={(event) => void submit(event)}>
+      <div>
+        <h2>Rejoindre un tableau</h2>
+        <p className="muted">Sans compte : un code et votre nom suffisent.</p>
+      </div>
       {!initialCode && (
-        <label className="guest-join-field">
-          Code du board
+        <Field label="Code du tableau">
           <input
+            className="input input-code"
             value={code}
-            placeholder="CODE"
+            placeholder="K7P4X2"
             maxLength={6}
             autoCapitalize="characters"
             autoComplete="off"
             onChange={(event) => setCode(event.target.value.toUpperCase())}
           />
-        </label>
+        </Field>
       )}
-      <label className="guest-join-field">
-        Votre nom
+      <Field label="Votre nom" hint="Affiché aux autres participants">
         <input
+          className="input"
           value={name}
           maxLength={40}
           autoComplete="nickname"
+          placeholder="Ex. : Camille"
           onChange={(event) => setName(event.target.value)}
         />
-      </label>
-      {error && <p className="boards-error">{error}</p>}
-      <button type="submit" disabled={busy}>
+      </Field>
+      {error && <div className="alert alert-error">{error}</div>}
+      <Button
+        type="submit"
+        variant="primary"
+        size="lg"
+        block
+        disabled={busy}
+        iconRight="chevronRight"
+      >
         Rejoindre en invité
-      </button>
+      </Button>
     </form>
   );
 }
@@ -180,13 +209,17 @@ export function GuestJoinForm({ code: initialCode }: { code?: string }) {
 /** Lien `#/join/<CODE>` sans être connecté : entrer en invité, ou se connecter. */
 export function GuestJoinPage({ code }: { code: string }) {
   return (
-    <main className="page-status access-page">
-      <GuestJoinForm code={code} />
-      <p>
-        ou <a href={`#/login?next=${encodeURIComponent(`/join/${code}`)}`}>se connecter</a> avec un
-        compte
-      </p>
-    </main>
+    <AccessLayout>
+      <div className="card access-card">
+        <div className="card-body">
+          <GuestJoinForm code={code} />
+          <p className="auth-alt">
+            Vous avez un compte ?{' '}
+            <a href={`#/login?next=${encodeURIComponent(`/join/${code}`)}`}>Connectez-vous</a>
+          </p>
+        </div>
+      </div>
+    </AccessLayout>
   );
 }
 
@@ -227,13 +260,23 @@ export function GuestRoute() {
 
   switch (state.kind) {
     case 'loading':
-      return <p className="page-status">Chargement du board…</p>;
+      return (
+        <div className="page-loading full">
+          <Spinner />
+        </div>
+      );
     case 'error':
       return (
-        <main className="page-status">
-          <p>{state.message}</p>
-          <a href="#/">Accueil</a>
-        </main>
+        <AccessLayout>
+          <span className="access-icon danger">
+            <Icon name="clock" size={24} />
+          </span>
+          <h1>Accès invité indisponible</h1>
+          <p className="muted access-hint">{state.message}</p>
+          <a href="#/" className="btn btn-secondary">
+            Accueil
+          </a>
+        </AccessLayout>
       );
     case 'ready':
       return state.waiting ? (
@@ -246,4 +289,16 @@ export function GuestRoute() {
         <BoardPage board={state.board} guestName={state.name} />
       );
   }
+}
+
+/** Page centrée des parcours d'accès (invité, attente, board privé). */
+export function AccessLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="access-page">
+      <a href="#/" className="access-logo">
+        <Logo />
+      </a>
+      <div className="access-content">{children}</div>
+    </main>
+  );
 }
