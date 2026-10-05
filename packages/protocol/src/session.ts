@@ -65,6 +65,8 @@ export const ParticipantSchema = z.object({
   mode: PresenceModeSchema,
   /** Rôle sur le board. */
   role: BoardRoleSchema,
+  /** Invité sans compte. */
+  guest: z.boolean().optional(),
 });
 export type Participant = z.infer<typeof ParticipantSchema>;
 
@@ -254,7 +256,22 @@ export const RemoteCursorSchema = z.object({
   position: CursorPositionSchema,
 });
 
+/**
+ * Session privée : l'accès a été demandé, la connexion attend la décision
+ * (JOINED si elle est acceptée, fermeture 4403 si elle est refusée).
+ */
+export const AccessPendingSchema = z.object({ type: z.literal('ACCESS_PENDING') });
+
+/** Aux Co-owners et au propriétaire : les demandes d'accès en attente ont changé. */
+export const AccessRequestedSchema = z.object({
+  type: z.literal('ACCESS_REQUESTED'),
+  /** Nombre de demandes en attente. */
+  pending: z.number().int().nonnegative(),
+});
+
 export const ServerSessionMessageSchema = z.discriminatedUnion('type', [
+  AccessPendingSchema,
+  AccessRequestedSchema,
   JoinedMessageSchema,
   SnapshotMessageSchema,
   RemoteOperationsMessageSchema,

@@ -8,7 +8,8 @@ import {
 import { createId } from '@fleight/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { WebSocket } from 'ws';
-import type { Identity } from './auth/auth-service';
+/** Auteur d'une connexion : un compte, ou un invité sans compte (`guest`). */
+export type ConnectionIdentity = { userId: string; displayName: string; guest?: boolean };
 
 /** Close codes applicatifs (plage 4000–4999 réservée aux applications). */
 export const CloseCode = {
@@ -27,7 +28,7 @@ export const CloseCode = {
 
 declare module 'fastify' {
   interface FastifyRequest {
-    connectionIdentity?: Identity;
+    connectionIdentity?: ConnectionIdentity;
   }
 }
 
@@ -39,7 +40,7 @@ export async function registerWebSocket(
   }: {
     hub: CollaborationHub;
     /** Utilisateur de la connexion ; `undefined` : refusée avant l'ouverture (401). */
-    identify: (request: FastifyRequest) => Promise<Identity | undefined>;
+    identify: (request: FastifyRequest) => Promise<ConnectionIdentity | undefined>;
   },
 ) {
   /** Connexions ouvertes par utilisateur, pour les fermer quand ses sessions sont révoquées. */
@@ -58,7 +59,7 @@ export async function registerWebSocket(
       },
     },
     (socket, request) => {
-      const identity = request.connectionIdentity as Identity;
+      const identity = request.connectionIdentity as ConnectionIdentity;
       const connectionId = createId();
       const log = request.log.child({ connectionId, userId: identity.userId });
       let greeted = false;
@@ -89,7 +90,11 @@ export async function registerWebSocket(
             socket.close(CloseCode.ServerError, 'STORAGE_ERROR');
           }
         },
-        { id: identity.userId, name: identity.displayName },
+        {
+          id: identity.userId,
+          name: identity.displayName,
+          ...(identity.guest ? { guest: true } : {}),
+        },
       );
       const sockets = byUser.get(identity.userId) ?? new Set<WebSocket>();
       sockets.add(socket);

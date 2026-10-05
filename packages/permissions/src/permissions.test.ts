@@ -1,6 +1,7 @@
 import { BOARD_ROLES, type BoardRole } from '@fleight/protocol';
 import { describe, expect, it } from 'vitest';
 import {
+  accessValid,
   assignableRoles,
   BOARD_ACTIONS,
   type BoardAction,
@@ -76,21 +77,61 @@ describe('délégation', () => {
 
   it('un Admin global propriétaire délègue au plus Co-owner', () => {
     // Le rôle global n'entre pas dans le calcul : l'Admin est un Owner comme un autre.
-    const role = effectiveRole({ isOwner: true, defaultRole: 'none' });
+    const role = effectiveRole({ isOwner: true, visibility: 'private', defaultRole: 'viewer' });
     expect(role).toBe('owner');
     expect(assignableRoles(role).at(-1)).toBe('co-owner');
   });
 });
 
 describe('rôle effectif', () => {
-  it('propriétaire, puis rôle de membre, puis accès des non-membres', () => {
-    expect(effectiveRole({ isOwner: true, memberRole: 'viewer', defaultRole: 'editor' })).toBe(
-      'owner',
+  it('propriétaire, puis rôle de membre, puis rôle par défaut d’une session publique', () => {
+    const base = { visibility: 'public' as const, defaultRole: 'editor' as const };
+    expect(effectiveRole({ ...base, isOwner: true, memberRole: 'viewer' })).toBe('owner');
+    // Un rôle de membre l'emporte, même plus faible que le rôle par défaut.
+    expect(effectiveRole({ ...base, isOwner: false, memberRole: 'viewer' })).toBe('viewer');
+    expect(effectiveRole({ ...base, isOwner: false })).toBe('editor');
+  });
+
+  it('session privée : un non-membre n’a aucun accès', () => {
+    expect(
+      effectiveRole({ isOwner: false, visibility: 'private', defaultRole: 'editor' }),
+    ).toBeUndefined();
+    expect(
+      effectiveRole({
+        isOwner: false,
+        memberRole: 'editor',
+        visibility: 'private',
+        defaultRole: 'viewer',
+      }),
+    ).toBe('editor');
+  });
+
+  it('accès temporaire ou lié à la présence de celui qui l’a accordé', () => {
+    const now = new Date('2026-10-05T12:00:00Z');
+    const connected = new Set(['host']);
+    const isConnected = (id: string) => connected.has(id);
+    expect(accessValid({ expiresAt: null, whileConnected: null }, { now, isConnected })).toBe(true);
+    expect(
+      accessValid(
+        { expiresAt: new Date('2026-10-05T12:30:00Z'), whileConnected: null },
+        { now, isConnected },
+      ),
+    ).toBe(true);
+    expect(
+      accessValid(
+        { expiresAt: new Date('2026-10-05T11:59:00Z'), whileConnected: null },
+        {
+          now,
+          isConnected,
+        },
+      ),
+    ).toBe(false);
+    expect(accessValid({ expiresAt: null, whileConnected: 'host' }, { now, isConnected })).toBe(
+      true,
     );
-    expect(effectiveRole({ isOwner: false, memberRole: 'viewer', defaultRole: 'editor' })).toBe(
-      'viewer',
+    connected.clear();
+    expect(accessValid({ expiresAt: null, whileConnected: 'host' }, { now, isConnected })).toBe(
+      false,
     );
-    expect(effectiveRole({ isOwner: false, defaultRole: 'editor' })).toBe('editor');
-    expect(effectiveRole({ isOwner: false, defaultRole: 'none' })).toBeUndefined();
   });
 });

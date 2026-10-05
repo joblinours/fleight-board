@@ -75,9 +75,11 @@ export class AssetService {
   }
 
   /** Contenu d'un fichier importé, avec son type. */
-  async read(id: string): Promise<{ asset: Asset; data: Buffer }> {
+  /** Contenu d'un fichier importé ; `boardId` : seulement s'il appartient à ce board (invités). */
+  async read(id: string, boardId?: string): Promise<{ asset: Asset; data: Buffer }> {
     const [row] = await this.#db.select().from(assets).where(eq(assets.id, id)).limit(1);
-    const data = row && (await this.#storage.get(row.sha256));
+    const allowed = row && (boardId === undefined || row.boardId === boardId);
+    const data = allowed && (await this.#storage.get(row.sha256));
     if (!row || !data) throw new AssetError('ASSET_NOT_FOUND', 'Fichier introuvable');
     return {
       asset: {

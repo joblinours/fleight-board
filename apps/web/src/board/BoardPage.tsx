@@ -9,6 +9,7 @@ import {
   type PresenceMode,
 } from '@fleight/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { api } from '../auth/api';
 import { refreshSession, useSession } from '../auth/session';
 import { createImageCache } from './image-cache';
 import { createLockService } from './lock-service';
@@ -19,6 +20,7 @@ import { CloseCodes, connectWebSocket } from './websocket-transport';
 
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
   connecting: 'Connexion…',
+  waiting: 'En attente d’acceptation…',
   joined: 'Connecté',
   closed: 'Hors ligne — reconnexion…',
 };
@@ -59,7 +61,14 @@ function storedPresenceMode(): PresenceMode {
 }
 
 /** Whiteboard local (`board` absent) ou collaboratif. */
-export function BoardPage({ board }: { board?: BoardSummary }) {
+export function BoardPage({
+  board,
+  guestName,
+}: {
+  board?: BoardSummary;
+  /** Invité sans compte : son nom affiché (pas de gestion des membres). */
+  guestName?: string;
+}) {
   const boardId = board?.id;
   // Page d'un canvas standard, lue une fois à l'ouverture (le format ne change pas).
   const pageRef = useRef(
@@ -97,7 +106,12 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
   const session = useSession();
   // Nom indicatif : le serveur affiche celui du compte connecté.
   const userName = useRef('Invité');
-  userName.current = session.status === 'authenticated' ? session.user.displayName : 'Invité';
+  userName.current =
+    guestName ?? (session.status === 'authenticated' ? session.user.displayName : 'Invité');
+  /** Demandes d'accès en attente (Co-owners et propriétaire). */
+  const [accessRequests, setAccessRequests] = useState(0);
+  // Incrémenté à chaque nouvelle demande : le panneau des membres se recharge.
+  const [requestsVersion, setRequestsVersion] = useState(0);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -115,6 +129,10 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
             setSelf(clientRef.current?.connectionId);
           },
           onCursors: () => editorRef.current?.refresh(),
+          onAccessRequests: (count) => {
+            setAccessRequests(count);
+            setRequestsVersion((current) => current + 1);
+          },
           onRole: (next) => {
             setRole(next);
             if (editorRef.current) editorRef.current.readOnly = !can(next, 'board.edit');
@@ -227,6 +245,20 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
     if (editorRef.current) editorRef.current.inputMode = mode;
   }, [mode]);
 
+  // Co-owners et propriétaire : demandes déjà en attente à l'ouverture du board.
+  useEffect(() => {
+    if (!boardId || guestName || !can(role, 'board.members')) return;
+    let cancelled = false;
+    api<{ requests: unknown[] }>(`/boards/${boardId}/access-requests`)
+      .then(({ requests }) => {
+        if (!cancelled) setAccessRequests(requests.length);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [boardId, guestName, role]);
+
   const changePresenceMode = (next: PresenceMode) => {
     setPresenceMode(next);
     clientRef.current?.setPresenceMode(next);
@@ -264,6 +296,10 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
     async (file: File) => {
       const editor = editorRef.current;
       if (!editor || !boardId) return;
+      if (guestName) {
+        setRejection('L’import d’images est réservé aux comptes.');
+        return;
+      }
       if (!file.type.startsWith('image/')) {
         setRejection('Seules les images (PNG, JPEG, GIF, WebP) peuvent être importées.');
         return;
@@ -286,7 +322,7 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
         setRejection('Import impossible : API injoignable.');
       }
     },
-    [boardId],
+    [boardId, guestName],
   );
 
   // Coller une image depuis le presse-papiers.
@@ -368,7 +404,7 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
             {label}
           </button>
         ))}
-        {boardId && canEdit && (
+        {boardId && canEdit && !guestName && (
           <label className="board-upload" title="Importer une image (ou glisser-déposer, coller)">
             Image
             <input
@@ -433,12 +469,22 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
 
       {canEdit && <PropertiesPanel editor={editorRef.current} tool={tool} />}
 
-      {showMembers && boardId && (
+      {showMembers && boardId && !guestName && (
         <MembersPanel
           boardId={boardId}
           selfId={session.status === 'authenticated' ? session.user.id : undefined}
+          requestsVersion={requestsVersion}
+          onRequests={setAccessRequests}
           onClose={() => setShowMembers(false)}
         />
+      )}
+
+      {accessRequests > 0 && !showMembers && (
+        <button type="button" className="board-requests-toast" onClick={() => setShowMembers(true)}>
+          {accessRequests === 1
+            ? '1 demande d’accès en attente'
+            : `${accessRequests} demandes d’accès en attente`}
+        </button>
       )}
 
       {boardId && (
@@ -456,9 +502,13 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
           </span>
           <span className="board-role">
             {role ? `Votre rôle : ${ROLE_LABELS[role]}` : ''}
-            <button type="button" onClick={() => setShowMembers(!showMembers)}>
-              Membres
-            </button>
+            {guestName ? (
+              <span className="board-guest-badge">Invité</span>
+            ) : (
+              <button type="button" onClick={() => setShowMembers(!showMembers)}>
+                Membres{accessRequests > 0 ? ` (${accessRequests})` : ''}
+              </button>
+            )}
           </span>
           <label className="board-presence">
             Présence

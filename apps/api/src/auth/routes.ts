@@ -218,6 +218,9 @@ export async function registerAuth(app: FastifyInstance, options: AuthRoutesOpti
         USER_NOT_FOUND: 404,
         MEMBER_NOT_FOUND: 404,
         ALREADY_MEMBER: 409,
+        REQUEST_NOT_FOUND: 404,
+        GUESTS_NOT_ALLOWED: 403,
+        INVALID_ROLE: 400,
       }[err.code];
       return reply.code(status).send(error(err.code, err.message));
     }

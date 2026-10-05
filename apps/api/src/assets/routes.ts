@@ -9,8 +9,15 @@ export async function registerAssets(
   {
     assets,
     requireUser,
+    requireUserOrGuest,
     maxBytes,
-  }: { assets: AssetService; requireUser: preHandlerHookHandler; maxBytes: number },
+  }: {
+    assets: AssetService;
+    requireUser: preHandlerHookHandler;
+    /** Lecture : compte, ou invité (seulement les images de son board). */
+    requireUserOrGuest?: preHandlerHookHandler;
+    maxBytes: number;
+  },
 ) {
   // Corps brut (le fichier) ; son type réel est vérifié par le service.
   app.addContentTypeParser(
@@ -37,19 +44,26 @@ export async function registerAssets(
     },
   );
 
-  app.get('/assets/:id', { preHandler: requireUser }, async (request, reply) => {
-    const { asset, data } = await assets.read((request.params as { id: string }).id);
-    return (
-      reply
-        .header('content-type', asset.mimeType)
-        // Contenu immuable (un nouvel import a un nouvel identifiant).
-        .header('cache-control', 'private, max-age=31536000, immutable')
-        .header('x-content-type-options', 'nosniff')
-        .header('content-security-policy', "default-src 'none'")
-        .header('content-disposition', 'inline')
-        .send(data)
-    );
-  });
+  app.get(
+    '/assets/:id',
+    { preHandler: requireUserOrGuest ?? requireUser },
+    async (request, reply) => {
+      const { asset, data } = await assets.read(
+        (request.params as { id: string }).id,
+        request.identity ? undefined : request.guest?.boardId,
+      );
+      return (
+        reply
+          .header('content-type', asset.mimeType)
+          // Contenu immuable (un nouvel import a un nouvel identifiant).
+          .header('cache-control', 'private, max-age=31536000, immutable')
+          .header('x-content-type-options', 'nosniff')
+          .header('content-security-policy', "default-src 'none'")
+          .header('content-disposition', 'inline')
+          .send(data)
+      );
+    },
+  );
 }
 
 function identity(request: FastifyRequest): Identity {

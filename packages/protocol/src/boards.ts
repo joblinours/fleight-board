@@ -1,5 +1,13 @@
 import { z } from 'zod';
-import { BoardRoleSchema, DefaultRoleSchema, MemberRoleSchema } from './roles';
+import {
+  AccessDurationSchema,
+  AccessLimitSchema,
+  BoardRoleSchema,
+  BoardVisibilitySchema,
+  DefaultRoleSchema,
+  GuestRoleSchema,
+  MemberRoleSchema,
+} from './roles';
 import { BoardIdSchema } from './session';
 
 /**
@@ -70,8 +78,12 @@ export const BoardSummarySchema = z.object({
   ownerName: z.string().nullable(),
   /** Masqué de la liste de son propriétaire. */
   hidden: z.boolean(),
-  /** Accès des utilisateurs non membres. */
+  /** Session publique (entrée directe) ou privée (demande d'accès). */
+  visibility: BoardVisibilitySchema,
+  /** Rôle des non-membres qui entrent dans une session publique. */
   defaultRole: DefaultRoleSchema,
+  /** Les invités (sans compte) peuvent rejoindre par code ou lien. */
+  allowGuests: z.boolean(),
   /** Rôle de l'utilisateur qui fait la requête (`null` : aucun accès). */
   role: BoardRoleSchema.nullable(),
   createdAt: z.string(),
@@ -93,7 +105,9 @@ export const UpdateBoardRequestSchema = z
     name: BoardNameSchema,
     description: BoardDescriptionSchema,
     hidden: z.boolean(),
+    visibility: BoardVisibilitySchema,
     defaultRole: DefaultRoleSchema,
+    allowGuests: z.boolean(),
   })
   .partial();
 export type UpdateBoardRequest = z.infer<typeof UpdateBoardRequestSchema>;
@@ -105,19 +119,35 @@ export const BoardsResponseSchema = z.object({ boards: z.array(BoardSummarySchem
 export type BoardsResponse = z.infer<typeof BoardsResponseSchema>;
 
 /** Membre d'un board (hors propriétaire). */
-export const BoardMemberSchema = z.object({
-  userId: z.string(),
-  username: z.string(),
-  displayName: z.string(),
-  role: MemberRoleSchema,
-  createdAt: z.string(),
-});
+export const BoardMemberSchema = z
+  .object({
+    userId: z.string(),
+    username: z.string(),
+    displayName: z.string(),
+    role: MemberRoleSchema,
+    createdAt: z.string(),
+  })
+  .extend(AccessLimitSchema.shape);
 export type BoardMember = z.infer<typeof BoardMemberSchema>;
+
+/** Invité (sans compte) admis sur un board. */
+export const BoardGuestSchema = z
+  .object({
+    guestId: z.string(),
+    displayName: z.string(),
+    role: GuestRoleSchema,
+    createdAt: z.string(),
+  })
+  .extend(AccessLimitSchema.shape);
+export type BoardGuest = z.infer<typeof BoardGuestSchema>;
 
 export const BoardMembersResponseSchema = z.object({
   owner: z.object({ userId: z.string(), username: z.string(), displayName: z.string() }).nullable(),
   members: z.array(BoardMemberSchema),
+  guests: z.array(BoardGuestSchema),
+  visibility: BoardVisibilitySchema,
   defaultRole: DefaultRoleSchema,
+  allowGuests: z.boolean(),
   /** Rôle de l'utilisateur qui fait la requête. */
   role: BoardRoleSchema,
 });
@@ -127,8 +157,9 @@ export const AddMemberRequestSchema = z.object({
   /** Nom d'utilisateur ou e-mail du compte à ajouter. */
   identifier: z.string().trim().min(1).max(254),
   role: MemberRoleSchema,
+  duration: AccessDurationSchema.default({ kind: 'permanent' }),
 });
-export type AddMemberRequest = z.infer<typeof AddMemberRequestSchema>;
+export type AddMemberRequest = z.input<typeof AddMemberRequestSchema>;
 
 export const UpdateMemberRequestSchema = z.object({ role: MemberRoleSchema });
 export type UpdateMemberRequest = z.infer<typeof UpdateMemberRequestSchema>;
@@ -136,6 +167,61 @@ export type UpdateMemberRequest = z.infer<typeof UpdateMemberRequestSchema>;
 /** Transfert de propriété à un membre ; l'ancien propriétaire devient Co-owner. */
 export const TransferBoardRequestSchema = z.object({ userId: z.string().min(1) });
 export type TransferBoardRequest = z.infer<typeof TransferBoardRequestSchema>;
+
+/** Nom d'un invité : affiché aux autres participants. */
+export const GuestNameSchema = z
+  .string()
+  .trim()
+  .min(1, 'Nom requis')
+  .max(40, 'Au plus 40 caractères');
+
+/** Rejoindre un board par son code, sans compte. */
+export const GuestJoinRequestSchema = z.object({ name: GuestNameSchema });
+export type GuestJoinRequest = z.infer<typeof GuestJoinRequestSchema>;
+
+/** Invité de la session courante (cookie). */
+export const GuestSchema = z.object({
+  id: z.string(),
+  displayName: z.string(),
+  boardId: z.string(),
+  /** `null` : demande d'accès en attente (ou refusée). */
+  role: GuestRoleSchema.nullable(),
+});
+export type Guest = z.infer<typeof GuestSchema>;
+
+export const GuestResponseSchema = z.object({ guest: GuestSchema, board: BoardSummarySchema });
+export type GuestResponse = z.infer<typeof GuestResponseSchema>;
+
+/** Demande d'accès à une session privée. */
+export const AccessRequestSchema = z.object({
+  id: z.string(),
+  kind: z.enum(['user', 'guest']),
+  displayName: z.string(),
+  /** Nom d'utilisateur (compte) ; `null` pour un invité. */
+  username: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type AccessRequest = z.infer<typeof AccessRequestSchema>;
+
+export const AccessRequestsResponseSchema = z.object({ requests: z.array(AccessRequestSchema) });
+export type AccessRequestsResponse = z.infer<typeof AccessRequestsResponseSchema>;
+
+/** État de sa propre demande d'accès. */
+export const AccessRequestStatusSchema = z.object({
+  status: z.enum(['pending', 'granted', 'denied']),
+});
+export type AccessRequestStatus = z.infer<typeof AccessRequestStatusSchema>;
+
+/** Décision sur une demande : accepter (rôle et durée) ou refuser. */
+export const DecideAccessRequestSchema = z.discriminatedUnion('decision', [
+  z.object({
+    decision: z.literal('accept'),
+    role: MemberRoleSchema,
+    duration: AccessDurationSchema.default({ kind: 'permanent' }),
+  }),
+  z.object({ decision: z.literal('deny') }),
+]);
+export type DecideAccessRequest = z.input<typeof DecideAccessRequestSchema>;
 
 /** Types d'images acceptés à l'import (SVG exclu : il peut contenir du script). */
 export const IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;

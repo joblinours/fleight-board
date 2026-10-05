@@ -1,5 +1,6 @@
-import { randomInt } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 import {
+  accessValid,
   type BoardAction,
   can,
   canAssign,
@@ -8,23 +9,33 @@ import {
   effectiveRole,
 } from '@fleight/permissions';
 import {
+  type AccessDuration,
+  type AccessRequest,
+  type AccessRequestStatus,
   type AddMemberRequest,
+  AddMemberRequestSchema,
   BOARD_CODE_ALPHABET,
+  type BoardGuest,
   type BoardMember,
   type BoardMembersResponse,
   type BoardRole,
   type BoardSummary,
   type CreateBoardRequest,
   CreateBoardRequestSchema,
+  type DecideAccessRequest,
+  DecideAccessRequestSchema,
+  type Guest,
+  type GuestRole,
   type MemberRole,
   type UpdateBoardRequest,
 } from '@fleight/protocol';
 import { createId } from '@fleight/shared';
-import { and, asc, desc, eq, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, or } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import type { Identity } from '../auth/auth-service';
 import type { Db } from '../database';
 import { writeAuditEvent } from '../db/audit-log';
-import { boardMembers, boards, users } from '../db/schema';
+import { accessRequests, boardMembers, boards, guests, users } from '../db/schema';
 
 /** Erreur métier, traduite en réponse HTTP par les routes. */
 export class BoardError extends Error {
@@ -35,7 +46,10 @@ export class BoardError extends Error {
       | 'FORBIDDEN'
       | 'USER_NOT_FOUND'
       | 'MEMBER_NOT_FOUND'
-      | 'ALREADY_MEMBER',
+      | 'ALREADY_MEMBER'
+      | 'REQUEST_NOT_FOUND'
+      | 'GUESTS_NOT_ALLOWED'
+      | 'INVALID_ROLE',
     message: string,
   ) {
     super(message);
@@ -53,7 +67,34 @@ type Row = {
   board: typeof boards.$inferSelect;
   ownerName: string | null;
   memberRole: MemberRole | null;
+  memberExpiresAt: Date | null;
+  memberWhileConnected: string | null;
 };
+
+/** Durée de vie d'un invité (cookie et accès), sauf accès plus court. */
+export const GUEST_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Limites d'un accès accordé pour une durée donnée. */
+function accessLimits(
+  duration: AccessDuration,
+  grantedBy: string,
+): { expiresAt: Date | null; whileConnected: string | null } {
+  switch (duration.kind) {
+    case 'permanent':
+      return { expiresAt: null, whileConnected: null };
+    case 'temporary':
+      return { expiresAt: new Date(Date.now() + duration.minutes * 60_000), whileConnected: null };
+    case 'while-connected':
+      return { expiresAt: null, whileConnected: grantedBy };
+  }
+}
+
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+/** Auteur d'un événement d'audit : compte, ou invité. */
+type Actor = Identity | { guestId: string; displayName: string };
 
 type BoardAuditAction =
   | 'board.create'
@@ -62,7 +103,12 @@ type BoardAuditAction =
   | 'board.transfer'
   | 'board.member.add'
   | 'board.member.update'
-  | 'board.member.remove';
+  | 'board.member.remove'
+  | 'board.guest.join'
+  | 'board.guest.remove'
+  | 'board.access.request'
+  | 'board.access.accept'
+  | 'board.access.deny';
 
 const FORBIDDEN_MESSAGES: Partial<Record<BoardAction, string>> = {
   'board.view': 'Ce board est réservé à ses membres',
@@ -83,6 +129,13 @@ export class BoardService {
   onDeleted: ((boardId: string) => void | Promise<void>) | undefined;
   /** Appelé quand les droits sur un board changent (sessions ouvertes à réévaluer). */
   onAccessChanged: ((boardId: string) => void | Promise<void>) | undefined;
+  /** Appelé quand les demandes d'accès en attente changent (Co-owners à prévenir). */
+  onAccessRequests: ((boardId: string, pending: number) => void) | undefined;
+  /**
+   * Le compte est connecté au board (accès « tant qu'il est connecté ») ; branché
+   * sur les sessions WebSocket par l'application.
+   */
+  isConnected: (boardId: string, userId: string) => boolean = () => false;
 
   constructor(db: Db) {
     this.#db = db;
@@ -127,7 +180,7 @@ export class BoardService {
     const rows = await this.#select(identity.userId)
       .where(includeHidden ? mine : and(mine, eq(boards.hidden, false)))
       .orderBy(desc(boards.updatedAt));
-    return rows.map((row) => summary(row, identity.userId));
+    return rows.map((row) => this.#summary(row, identity.userId));
   }
 
   /** Board visible par l'utilisateur (rôle Viewer au moins). */
@@ -135,14 +188,14 @@ export class BoardService {
     return (await this.#authorize(identity, eq(boards.id, id), 'board.view')).board;
   }
 
+  /**
+   * Board correspondant à un code. Sans accès (session privée), le board est
+   * tout de même renvoyé (`role: null`) : l'utilisateur peut demander l'accès.
+   */
   async byCode(identity: Identity, code: string): Promise<BoardSummary> {
     const row = await this.#find(identity.userId, eq(boards.code, code));
     if (!row) throw new BoardError('BOARD_NOT_FOUND', 'Aucun board ne correspond à ce code');
-    const board = summary(row, identity.userId);
-    if (!can(board.role, 'board.view')) {
-      throw new BoardError('FORBIDDEN', 'Ce board est réservé à ses membres');
-    }
-    return board;
+    return this.#summary(row, identity.userId);
   }
 
   /**
@@ -151,7 +204,7 @@ export class BoardService {
    */
   async roleOf(userId: string, boardId: string): Promise<BoardRole | undefined> {
     const row = await this.#find(userId, eq(boards.id, boardId));
-    return row ? (summary(row, userId).role ?? undefined) : undefined;
+    return row ? (this.#summary(row, userId).role ?? undefined) : undefined;
   }
 
   async update(identity: Identity, id: string, changes: UpdateBoardRequest): Promise<BoardSummary> {
@@ -160,10 +213,13 @@ export class BoardService {
     if (changes.name !== undefined) values.name = changes.name;
     if (changes.description !== undefined) values.description = changes.description;
     if (changes.hidden !== undefined) values.hidden = changes.hidden;
+    if (changes.visibility !== undefined) values.visibility = changes.visibility;
     if (changes.defaultRole !== undefined) values.defaultRole = changes.defaultRole;
+    if (changes.allowGuests !== undefined) values.allowGuests = changes.allowGuests;
     await this.#db.update(boards).set(values).where(eq(boards.id, id));
     await this.#audit(identity, 'board.update', id, { changes });
-    if (changes.defaultRole !== undefined) await this.onAccessChanged?.(id);
+    const access = [changes.visibility, changes.defaultRole, changes.allowGuests];
+    if (access.some((value) => value !== undefined)) await this.onAccessChanged?.(id);
     return this.get(identity, id);
   }
 
@@ -191,6 +247,7 @@ export class BoardService {
           .from(users)
           .where(eq(users.id, row.board.ownerId))
       : [];
+    const host = alias(users, 'host');
     const members = await this.#db
       .select({
         userId: users.id,
@@ -198,23 +255,73 @@ export class BoardService {
         displayName: users.displayName,
         role: boardMembers.role,
         createdAt: boardMembers.createdAt,
+        expiresAt: boardMembers.expiresAt,
+        hostId: host.id,
+        hostName: host.displayName,
       })
       .from(boardMembers)
       .innerJoin(users, eq(users.id, boardMembers.userId))
+      .leftJoin(host, eq(host.id, boardMembers.whileConnected))
       .where(eq(boardMembers.boardId, id))
       .orderBy(asc(boardMembers.createdAt));
+    const guestRows = await this.#db
+      .select({
+        guestId: guests.id,
+        displayName: guests.displayName,
+        role: guests.role,
+        createdAt: guests.createdAt,
+        expiresAt: guests.expiresAt,
+        hostId: host.id,
+        hostName: host.displayName,
+      })
+      .from(guests)
+      .leftJoin(host, eq(host.id, guests.whileConnected))
+      .where(and(eq(guests.boardId, id), gt(guests.expiresAt, new Date())))
+      .orderBy(asc(guests.createdAt));
+    const limit = (row: {
+      expiresAt: Date | null;
+      hostId: string | null;
+      hostName: string | null;
+    }) => ({
+      expiresAt: row.expiresAt?.toISOString() ?? null,
+      whileConnected:
+        row.hostId && row.hostName ? { userId: row.hostId, displayName: row.hostName } : null,
+    });
     return {
       owner: owner ?? null,
       members: members.map(
-        (member): BoardMember => ({ ...member, createdAt: member.createdAt.toISOString() }),
+        (member): BoardMember => ({
+          userId: member.userId,
+          username: member.username,
+          displayName: member.displayName,
+          role: member.role,
+          createdAt: member.createdAt.toISOString(),
+          ...limit(member),
+        }),
       ),
+      guests: guestRows.flatMap((guest): BoardGuest[] =>
+        guest.role
+          ? [
+              {
+                guestId: guest.guestId,
+                displayName: guest.displayName,
+                role: guest.role,
+                createdAt: guest.createdAt.toISOString(),
+                ...limit(guest),
+              },
+            ]
+          : [],
+      ),
+      visibility: board.visibility,
       defaultRole: board.defaultRole,
+      allowGuests: board.allowGuests,
       role: board.role as BoardRole,
     };
   }
 
   /** Ajoute un membre (par nom d'utilisateur ou e-mail), avec un rôle au plus égal au sien. */
-  async addMember(identity: Identity, id: string, request: AddMemberRequest): Promise<void> {
+  async addMember(identity: Identity, id: string, input: AddMemberRequest): Promise<void> {
+    const request = AddMemberRequestSchema.parse(input);
     const { board } = await this.#authorize(identity, eq(boards.id, id), 'board.members');
     if (!canAssign(board.role, request.role)) {
       throw new BoardError('FORBIDDEN', 'Vous ne pouvez pas attribuer un rôle supérieur au vôtre');
@@ -236,7 +343,13 @@ export class BoardService {
     }
     const inserted = await this.#db
       .insert(boardMembers)
-      .values({ boardId: id, userId: user.id, role: request.role, grantedBy: identity.userId })
+      .values({
+        boardId: id,
+        userId: user.id,
+        role: request.role,
+        grantedBy: identity.userId,
+        ...accessLimits(request.duration, identity.userId),
+      })
       .onConflictDoNothing()
       .returning({ userId: boardMembers.userId });
     if (!inserted.length) {
@@ -246,6 +359,7 @@ export class BoardService {
       member: user.id,
       memberName: user.displayName,
       role: request.role,
+      duration: request.duration,
     });
     await this.onAccessChanged?.(id);
   }
@@ -315,6 +429,314 @@ export class BoardService {
     return this.get(identity, id);
   }
 
+  // ---------------------------------------------------------------- demandes d'accès
+
+  /**
+   * Demande l'accès à une session privée (compte). Sans effet si l'utilisateur a
+   * déjà accès ou qu'une demande est en attente ; les Co-owners en sont prévenus.
+   */
+  async requestAccess(identity: Identity, id: string): Promise<AccessRequestStatus> {
+    const row = await this.#find(identity.userId, eq(boards.id, id));
+    if (!row) throw new BoardError('BOARD_NOT_FOUND', 'Board introuvable');
+    if (can(this.#summary(row, identity.userId).role, 'board.view')) return { status: 'granted' };
+    if (await this.#pendingRequest(id, { userId: identity.userId })) return { status: 'pending' };
+    await this.#db.insert(accessRequests).values({
+      id: createId(),
+      boardId: id,
+      userId: identity.userId,
+      displayName: identity.displayName,
+    });
+    await this.#audit(identity, 'board.access.request', id, {});
+    await this.#notifyRequests(id);
+    return { status: 'pending' };
+  }
+
+  /** État de sa propre demande d'accès (compte ou invité). */
+  async requestStatus(
+    requester: { userId: string } | { guestId: string },
+    id: string,
+  ): Promise<AccessRequestStatus> {
+    const role =
+      'userId' in requester
+        ? await this.roleOf(requester.userId, id)
+        : await this.guestRole(requester.guestId, id);
+    if (can(role, 'board.view')) return { status: 'granted' };
+    const [latest] = await this.#db
+      .select({ status: accessRequests.status })
+      .from(accessRequests)
+      .where(
+        and(
+          eq(accessRequests.boardId, id),
+          'userId' in requester
+            ? eq(accessRequests.userId, requester.userId)
+            : eq(accessRequests.guestId, requester.guestId),
+        ),
+      )
+      .orderBy(desc(accessRequests.createdAt))
+      .limit(1);
+    // Une demande acceptée dont l'accès a expiré compte comme refusée.
+    return { status: latest?.status === 'pending' ? 'pending' : 'denied' };
+  }
+
+  /** La connexion attend une décision (demande en attente) : salle d'attente du hub. */
+  async awaitsAccess(id: string, requester: { userId: string } | { guestId: string }) {
+    return !!(await this.#pendingRequest(id, requester));
+  }
+
+  /** Demandes en attente : Co-owners et propriétaire. */
+  async listRequests(identity: Identity, id: string): Promise<AccessRequest[]> {
+    await this.#authorize(identity, eq(boards.id, id), 'board.members');
+    const rows = await this.#db
+      .select({
+        id: accessRequests.id,
+        userId: accessRequests.userId,
+        displayName: accessRequests.displayName,
+        username: users.username,
+        createdAt: accessRequests.createdAt,
+      })
+      .from(accessRequests)
+      .leftJoin(users, eq(users.id, accessRequests.userId))
+      .where(and(eq(accessRequests.boardId, id), eq(accessRequests.status, 'pending')))
+      .orderBy(asc(accessRequests.createdAt));
+    return rows.map((row) => ({
+      id: row.id,
+      kind: row.userId ? 'user' : 'guest',
+      displayName: row.displayName,
+      username: row.username,
+      createdAt: row.createdAt.toISOString(),
+    }));
+  }
+
+  /**
+   * Accepte (rôle au plus égal au sien, durée) ou refuse une demande. Un invité
+   * reçoit au plus le rôle Editor. La connexion en attente est aussitôt prévenue.
+   */
+  async decide(
+    identity: Identity,
+    id: string,
+    requestId: string,
+    input: DecideAccessRequest,
+  ): Promise<void> {
+    const decision = DecideAccessRequestSchema.parse(input);
+    const { board } = await this.#authorize(identity, eq(boards.id, id), 'board.members');
+    const [request] = await this.#db
+      .select()
+      .from(accessRequests)
+      .where(
+        and(
+          eq(accessRequests.id, requestId),
+          eq(accessRequests.boardId, id),
+          eq(accessRequests.status, 'pending'),
+        ),
+      )
+      .limit(1);
+    if (!request) throw new BoardError('REQUEST_NOT_FOUND', 'Demande introuvable ou déjà traitée');
+
+    if (decision.decision === 'accept') {
+      if (!canAssign(board.role, decision.role)) {
+        throw new BoardError(
+          'FORBIDDEN',
+          'Vous ne pouvez pas attribuer un rôle supérieur au vôtre',
+        );
+      }
+      const limits = accessLimits(decision.duration, identity.userId);
+      if (request.userId) {
+        await this.#db
+          .insert(boardMembers)
+          .values({
+            boardId: id,
+            userId: request.userId,
+            role: decision.role,
+            grantedBy: identity.userId,
+            ...limits,
+          })
+          .onConflictDoUpdate({
+            target: [boardMembers.boardId, boardMembers.userId],
+            set: {
+              role: decision.role,
+              grantedBy: identity.userId,
+              updatedAt: new Date(),
+              ...limits,
+            },
+          });
+      } else if (request.guestId) {
+        if (decision.role !== 'viewer' && decision.role !== 'editor') {
+          throw new BoardError('INVALID_ROLE', 'Un invité ne peut être que Viewer ou Editor');
+        }
+        const [guest] = await this.#db
+          .select({ expiresAt: guests.expiresAt })
+          .from(guests)
+          .where(eq(guests.id, request.guestId));
+        // L'accès d'un invité ne dépasse jamais la durée de vie de l'invité.
+        const expiresAt =
+          limits.expiresAt && guest && limits.expiresAt < guest.expiresAt
+            ? limits.expiresAt
+            : guest?.expiresAt;
+        await this.#db
+          .update(guests)
+          .set({
+            role: decision.role,
+            whileConnected: limits.whileConnected,
+            ...(expiresAt ? { expiresAt } : {}),
+          })
+          .where(eq(guests.id, request.guestId));
+      }
+    }
+    await this.#db
+      .update(accessRequests)
+      .set({
+        status: decision.decision === 'accept' ? 'granted' : 'denied',
+        decidedBy: identity.userId,
+        decidedAt: new Date(),
+      })
+      .where(eq(accessRequests.id, requestId));
+    await this.#audit(
+      identity,
+      decision.decision === 'accept' ? 'board.access.accept' : 'board.access.deny',
+      id,
+      {
+        requester: request.userId ?? request.guestId,
+        requesterName: request.displayName,
+        ...(decision.decision === 'accept'
+          ? { role: decision.role, duration: decision.duration }
+          : {}),
+      },
+    );
+    await this.#notifyRequests(id);
+    await this.onAccessChanged?.(id);
+  }
+
+  async #pendingRequest(id: string, requester: { userId: string } | { guestId: string }) {
+    const [request] = await this.#db
+      .select({ id: accessRequests.id })
+      .from(accessRequests)
+      .where(
+        and(
+          eq(accessRequests.boardId, id),
+          eq(accessRequests.status, 'pending'),
+          'userId' in requester
+            ? eq(accessRequests.userId, requester.userId)
+            : eq(accessRequests.guestId, requester.guestId),
+        ),
+      )
+      .limit(1);
+    return request;
+  }
+
+  async #notifyRequests(id: string): Promise<void> {
+    if (!this.onAccessRequests) return;
+    const [row] = await this.#db
+      .select({ pending: count() })
+      .from(accessRequests)
+      .where(and(eq(accessRequests.boardId, id), eq(accessRequests.status, 'pending')));
+    this.onAccessRequests(id, row?.pending ?? 0);
+  }
+
+  // ---------------------------------------------------------------- invités
+
+  /**
+   * Rejoint un board par son code, sans compte. Session publique : l'invité
+   * entre avec le rôle par défaut ; privée : sa demande d'accès est envoyée.
+   * Retourne le jeton du cookie (seul son hash est stocké).
+   */
+  async joinAsGuest(
+    code: string,
+    displayName: string,
+  ): Promise<{ token: string; guest: Guest; board: BoardSummary; expiresAt: Date }> {
+    const [board] = await this.#db.select().from(boards).where(eq(boards.code, code)).limit(1);
+    if (!board) throw new BoardError('BOARD_NOT_FOUND', 'Aucun board ne correspond à ce code');
+    if (!board.allowGuests) {
+      throw new BoardError(
+        'GUESTS_NOT_ALLOWED',
+        'Ce board n’accepte pas les invités : connectez-vous',
+      );
+    }
+    const token = randomBytes(32).toString('base64url');
+    const expiresAt = new Date(Date.now() + GUEST_TTL_MS);
+    const role: GuestRole | null = board.visibility === 'public' ? board.defaultRole : null;
+    const guestId = createId();
+    await this.#db.insert(guests).values({
+      id: guestId,
+      boardId: board.id,
+      displayName,
+      tokenHash: hashToken(token),
+      role,
+      expiresAt,
+    });
+    const actor = { guestId, displayName };
+    await this.#audit(actor, 'board.guest.join', board.id, { visibility: board.visibility });
+    if (!role) {
+      await this.#db.insert(accessRequests).values({
+        id: createId(),
+        boardId: board.id,
+        guestId,
+        displayName,
+      });
+      await this.#audit(actor, 'board.access.request', board.id, {});
+      await this.#notifyRequests(board.id);
+    }
+    const guest = { id: guestId, displayName, boardId: board.id, role };
+    return { token, guest, board: await this.guestBoard(guest), expiresAt };
+  }
+
+  /** Invité d'un jeton de cookie, s'il n'a pas expiré. */
+  async authenticateGuest(token: string | undefined): Promise<Guest | undefined> {
+    if (!token) return undefined;
+    const [guest] = await this.#db
+      .select()
+      .from(guests)
+      .where(and(eq(guests.tokenHash, hashToken(token)), gt(guests.expiresAt, new Date())))
+      .limit(1);
+    if (!guest) return undefined;
+    return {
+      id: guest.id,
+      displayName: guest.displayName,
+      boardId: guest.boardId,
+      role: (await this.guestRole(guest.id, guest.boardId)) ?? null,
+    };
+  }
+
+  /** Rôle d'un invité sur un board : le sien, s'il est valide et que le board accepte les invités. */
+  async guestRole(guestId: string, boardId: string): Promise<GuestRole | undefined> {
+    const [row] = await this.#db
+      .select({ guest: guests, allowGuests: boards.allowGuests })
+      .from(guests)
+      .innerJoin(boards, eq(boards.id, guests.boardId))
+      .where(and(eq(guests.id, guestId), eq(guests.boardId, boardId)))
+      .limit(1);
+    if (!row?.allowGuests || !row.guest.role) return undefined;
+    const valid = accessValid(row.guest, {
+      isConnected: (host) => this.isConnected(boardId, host),
+    });
+    return valid ? row.guest.role : undefined;
+  }
+
+  /** Board d'un invité, avec son rôle. */
+  async guestBoard(guest: Guest): Promise<BoardSummary> {
+    const [row] = await this.#select('').where(eq(boards.id, guest.boardId)).limit(1);
+    if (!row) throw new BoardError('BOARD_NOT_FOUND', 'Board introuvable');
+    return {
+      ...summary(row, '', false),
+      role: (await this.guestRole(guest.id, guest.boardId)) ?? null,
+    };
+  }
+
+  /** Retire un invité (Co-owner) : son accès et sa session prennent fin. */
+  async removeGuest(identity: Identity, id: string, guestId: string): Promise<void> {
+    await this.#authorize(identity, eq(boards.id, id), 'board.members');
+    const removed = await this.#db
+      .delete(guests)
+      .where(and(eq(guests.id, guestId), eq(guests.boardId, id)))
+      .returning({ displayName: guests.displayName });
+    if (!removed.length) throw new BoardError('MEMBER_NOT_FOUND', 'Invité introuvable');
+    await this.#audit(identity, 'board.guest.remove', id, {
+      guest: guestId,
+      guestName: removed[0]?.displayName,
+    });
+    await this.#notifyRequests(id);
+    await this.onAccessChanged?.(id);
+  }
+
   async #member(boardId: string, userId: string): Promise<{ role: MemberRole }> {
     const [member] = await this.#db
       .select({ role: boardMembers.role })
@@ -333,7 +755,7 @@ export class BoardService {
   ): Promise<{ board: BoardSummary; row: Row }> {
     const row = await this.#find(identity.userId, condition);
     if (!row) throw new BoardError('BOARD_NOT_FOUND', 'Board introuvable');
-    const board = summary(row, identity.userId);
+    const board = this.#summary(row, identity.userId);
     if (!can(board.role, action)) {
       throw new BoardError('FORBIDDEN', FORBIDDEN_MESSAGES[action] ?? 'Action non autorisée');
     }
@@ -343,7 +765,13 @@ export class BoardService {
   /** Board, nom du propriétaire et rôle de membre de l'utilisateur. */
   #select(userId: string) {
     return this.#db
-      .select({ board: boards, ownerName: users.displayName, memberRole: boardMembers.role })
+      .select({
+        board: boards,
+        ownerName: users.displayName,
+        memberRole: boardMembers.role,
+        memberExpiresAt: boardMembers.expiresAt,
+        memberWhileConnected: boardMembers.whileConnected,
+      })
       .from(boards)
       .leftJoin(users, eq(users.id, boards.ownerId))
       .leftJoin(
@@ -358,23 +786,37 @@ export class BoardService {
   }
 
   async #audit(
-    identity: Identity,
+    actor: Actor,
     action: BoardAuditAction,
     boardId: string,
     metadata: Record<string, unknown>,
   ): Promise<void> {
+    const guest = 'guestId' in actor;
     await writeAuditEvent(this.#db, {
-      actor: identity.userId,
-      actorType: 'user',
+      actor: guest ? actor.guestId : actor.userId,
+      actorType: guest ? 'guest' : 'user',
       action,
       boardId,
-      sessionId: identity.sessionId,
-      metadata: { actorName: identity.displayName, ...metadata },
+      sessionId: guest ? null : actor.sessionId,
+      metadata: { actorName: actor.displayName, ...metadata },
     });
+  }
+
+  /** Résumé d'un board pour un utilisateur : rôle de membre pris en compte s'il est valide. */
+  #summary(row: Row, userId: string): BoardSummary {
+    const valid = accessValid(
+      { expiresAt: row.memberExpiresAt, whileConnected: row.memberWhileConnected },
+      { isConnected: (host) => this.isConnected(row.board.id, host) },
+    );
+    return summary(row, userId, valid);
   }
 }
 
-function summary({ board, ownerName, memberRole }: Row, userId: string): BoardSummary {
+function summary(
+  { board, ownerName, memberRole }: Row,
+  userId: string,
+  memberValid: boolean,
+): BoardSummary {
   return {
     id: board.id,
     code: board.code,
@@ -384,11 +826,14 @@ function summary({ board, ownerName, memberRole }: Row, userId: string): BoardSu
     ownerId: board.ownerId,
     ownerName,
     hidden: board.hidden,
+    visibility: board.visibility,
     defaultRole: board.defaultRole,
+    allowGuests: board.allowGuests,
     role:
       effectiveRole({
         isOwner: board.ownerId === userId,
-        memberRole,
+        memberRole: memberValid ? memberRole : null,
+        visibility: board.visibility,
         defaultRole: board.defaultRole,
       }) ?? null,
     createdAt: board.createdAt.toISOString(),

@@ -1,6 +1,7 @@
 import { type HealthResponse, HealthResponseSchema, PROTOCOL_VERSION } from '@fleight/protocol';
 import { useEffect, useState } from 'react';
 import { logout, useSession } from './auth/session';
+import { GuestJoinForm } from './board/AccessPages';
 import { BoardsSection } from './boards/BoardsSection';
 import { MILESTONES } from './milestones';
 
@@ -103,9 +104,12 @@ function HomeBoards() {
   if (session.status === 'authenticated') return <BoardsSection />;
   if (session.status === 'anonymous') {
     return (
-      <p className="home-login">
-        <a href="#/login">Connectez-vous</a> pour créer et rejoindre des whiteboards.
-      </p>
+      <>
+        <p className="home-login">
+          <a href="#/login">Connectez-vous</a> pour créer et rejoindre des whiteboards.
+        </p>
+        <GuestJoinForm />
+      </>
     );
   }
   return null;

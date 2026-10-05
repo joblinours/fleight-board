@@ -21,7 +21,8 @@ export type Transport = {
   close(): void;
 };
 
-export type ConnectionStatus = 'connecting' | 'joined' | 'closed';
+/** `waiting` : session privée, l'accès a été demandé et attend une décision. */
+export type ConnectionStatus = 'connecting' | 'waiting' | 'joined' | 'closed';
 
 export type CollaborationEvents = {
   onStatus?(status: ConnectionStatus): void;
@@ -41,6 +42,8 @@ export type CollaborationEvents = {
   onCursors?(cursors: ReadonlyMap<string, CursorPoint>): void;
   /** Rôle de l'utilisateur sur le board (à la connexion, puis à chaque changement). */
   onRole?(role: BoardRole): void;
+  /** Co-owners et propriétaire : nombre de demandes d'accès en attente. */
+  onAccessRequests?(pending: number): void;
 };
 
 export type CursorPoint = { x: number; y: number };
@@ -397,6 +400,12 @@ export class CollaborationClient {
 
   #handle(message: ServerSessionMessage): void {
     switch (message.type) {
+      case 'ACCESS_PENDING':
+        this.#setStatus('waiting');
+        break;
+      case 'ACCESS_REQUESTED':
+        this.#options.onAccessRequests?.(message.pending);
+        break;
       case 'JOINED':
         this.#connectionId = message.self;
         this.#locks.clear();

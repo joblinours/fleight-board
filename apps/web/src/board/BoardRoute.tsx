@@ -1,20 +1,27 @@
 import { BoardIdSchema, BoardResponseSchema, type BoardSummary } from '@fleight/protocol';
 import { useEffect, useState } from 'react';
 import { ApiRequestError, api } from '../auth/api';
+import { useSession } from '../auth/session';
+import { AccessRequestView } from './AccessPages';
 import { BoardPage } from './BoardPage';
 
 type State =
   | { kind: 'loading' }
   | { kind: 'ready'; board: BoardSummary }
   | { kind: 'missing' }
+  | { kind: 'private' }
   | { kind: 'error'; message: string };
 
 /** Charge un board (nom, format, code) avant de l'ouvrir ; propose de le créer s'il n'existe pas. */
 export function BoardRoute({ boardId }: { boardId: string }) {
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [creating, setCreating] = useState(false);
+  // Incrémenté pour recharger le board (accès accordé).
+  const [version, setVersion] = useState(0);
+  const session = useSession();
 
   useEffect(() => {
+    void version;
     let cancelled = false;
     api(`/boards/${boardId}`)
       .then((data) => {
@@ -23,13 +30,15 @@ export function BoardRoute({ boardId }: { boardId: string }) {
       .catch((error: unknown) => {
         if (cancelled) return;
         if (error instanceof ApiRequestError && error.status === 404) setState({ kind: 'missing' });
-        else
+        else if (error instanceof ApiRequestError && error.status === 403) {
+          setState({ kind: 'private' });
+        } else
           setState({ kind: 'error', message: error instanceof Error ? error.message : 'Erreur' });
       });
     return () => {
       cancelled = true;
     };
-  }, [boardId]);
+  }, [boardId, version]);
 
   const create = async () => {
     setCreating(true);
@@ -48,6 +57,17 @@ export function BoardRoute({ boardId }: { boardId: string }) {
       return <p className="page-status">Chargement du board…</p>;
     case 'ready':
       return <BoardPage board={state.board} />;
+    case 'private':
+      return (
+        <AccessRequestView
+          boardId={boardId}
+          name={session.status === 'authenticated' ? session.user.displayName : 'Invité'}
+          onGranted={() => {
+            setState({ kind: 'loading' });
+            setVersion((current) => current + 1);
+          }}
+        />
+      );
     case 'error':
       return (
         <main className="page-status">

@@ -46,7 +46,7 @@ function toRecord({ createdAt, ...row }: typeof auditLogs.$inferSelect): AuditRe
 /** Événement hors opérations de board (compte, administration, gestion des boards). */
 export type AuditEvent = {
   actor: string;
-  actorType: 'user' | 'client' | 'system';
+  actorType: 'user' | 'guest' | 'client' | 'system';
   action: typeof auditLogs.$inferInsert.action;
   boardId?: string | null;
   objectId?: string | null;

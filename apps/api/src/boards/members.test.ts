@@ -86,7 +86,7 @@ describe.skipIf(!url)('membres et permissions', () => {
   async function boardWith(roles: Array<'viewer' | 'editor' | 'presenter' | 'co-owner'>) {
     const owner = await signIn();
     const board = (await owner.request('POST', '/boards', { name: 'Équipe' })).json().board;
-    await owner.request('PATCH', `/boards/${board.id}`, { defaultRole: 'none' });
+    await owner.request('PATCH', `/boards/${board.id}`, { visibility: 'private' });
     const members = [];
     for (const role of roles) {
       const member = await signIn();
@@ -137,7 +137,7 @@ describe.skipIf(!url)('membres et permissions', () => {
     expect(unknown.statusCode).toBe(404);
   });
 
-  it('accès des non-membres : édition par défaut, lecture, ou membres seulement', async () => {
+  it('accès des non-membres : session publique (édition, lecture) ou privée', async () => {
     const owner = await signIn();
     const stranger = await signIn();
     const board = (await owner.request('POST', '/boards', { name: 'Accès' })).json().board;
@@ -148,9 +148,12 @@ describe.skipIf(!url)('membres et permissions', () => {
       'viewer',
     );
 
-    await owner.request('PATCH', `/boards/${board.id}`, { defaultRole: 'none' });
+    await owner.request('PATCH', `/boards/${board.id}`, { visibility: 'private' });
     expect((await stranger.request('GET', `/boards/${board.id}`)).statusCode).toBe(403);
-    expect((await stranger.request('GET', `/boards/code/${board.code}`)).statusCode).toBe(403);
+    // Le code mène au board (pour demander l'accès), sans aucun droit.
+    expect((await stranger.request('GET', `/boards/code/${board.code}`)).json().board.role).toBe(
+      null,
+    );
     expect((await stranger.request('GET', `/boards/${board.id}/members`)).statusCode).toBe(403);
   });
 

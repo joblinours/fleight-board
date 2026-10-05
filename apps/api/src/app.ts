@@ -8,10 +8,11 @@ import { registerAssets } from './assets/routes';
 import type { AuthService, Identity } from './auth/auth-service';
 import { registerAuth, SESSION_COOKIE } from './auth/routes';
 import type { BoardService } from './boards/board-service';
+import { GUEST_COOKIE, requireUserOrGuest } from './boards/guest-auth';
 import { registerBoards } from './boards/routes';
 import type { Database } from './database';
 import type { AuditLogReader } from './db/audit-log';
-import { registerWebSocket } from './websocket';
+import { type ConnectionIdentity, registerWebSocket } from './websocket';
 
 export type AppOptions = {
   database: Pick<Database, 'ping'>;
@@ -91,27 +92,54 @@ export async function buildApp({
       ...(allowRegistration !== undefined ? { allowRegistration } : {}),
     });
 
-    if (boards) {
-      await registerBoards(app, { boards, audit, requireUser: requireUser() });
+    const userOrGuest = boards ? requireUserOrGuest(auth, boards) : undefined;
+    if (boards && userOrGuest) {
+      await registerBoards(app, {
+        boards,
+        audit,
+        requireUser: requireUser(),
+        requireUserOrGuest: userOrGuest,
+      });
       // Board supprimé : ses participants sont déconnectés.
       boards.onDeleted = (boardId) => collaboration.evict(boardId);
-      // Permissions des sessions : rôle vérifié à l'entrée, réévalué quand les membres changent.
-      collaboration.authorize = (boardId, user) =>
-        user ? boards.roleOf(user.id, boardId) : undefined;
+      // Permissions des sessions : rôle vérifié à l'entrée, réévalué quand les droits changent.
+      collaboration.authorize = (boardId, user) => {
+        if (!user) return undefined;
+        return user.guest ? boards.guestRole(user.id, boardId) : boards.roleOf(user.id, boardId);
+      };
+      // Session privée : une demande en attente garde la connexion en salle d'attente.
+      collaboration.awaitsAccess = async (boardId, user) =>
+        !!user &&
+        boards.awaitsAccess(boardId, user.guest ? { guestId: user.id } : { userId: user.id });
       boards.onAccessChanged = (boardId) => collaboration.refreshAccess(boardId);
+      boards.onAccessRequests = (boardId, pending) =>
+        collaboration.notifyAccessRequests(boardId, pending);
+      // Accès « tant que la personne qui l'a accordé est connectée ».
+      boards.isConnected = (boardId, userId) => collaboration.isConnected(boardId, userId);
+      collaboration.onLeave = (boardId) => void collaboration.refreshAccess(boardId);
     }
     if (assets) {
       if (boards) assets.roleOf = (userId, boardId) => boards.roleOf(userId, boardId);
-      await registerAssets(app, { assets, requireUser: requireUser(), maxBytes: maxUploadBytes });
+      await registerAssets(app, {
+        assets,
+        requireUser: requireUser(),
+        ...(userOrGuest ? { requireUserOrGuest: userOrGuest } : {}),
+        maxBytes: maxUploadBytes,
+      });
     }
   }
 
   const identifyConnection =
     identify ??
     (auth
-      ? async (request: FastifyRequest) => {
+      ? async (request: FastifyRequest): Promise<ConnectionIdentity | undefined> => {
           const identity = (await auth.authenticate(request.cookies[SESSION_COOKIE]))?.identity;
-          return identity && !identity.mustChangePassword ? identity : undefined;
+          if (identity && !identity.mustChangePassword) return identity;
+          // Sans compte : invité (cookie), limité à son board par `authorize`.
+          const guest = await boards?.authenticateGuest(request.cookies[GUEST_COOKIE]);
+          return guest
+            ? { userId: guest.id, displayName: guest.displayName, guest: true }
+            : undefined;
         }
       : async () => undefined);
   const connections = await registerWebSocket(app, {

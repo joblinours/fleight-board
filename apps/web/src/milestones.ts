@@ -284,4 +284,22 @@ export const MILESTONES: Milestone[] = [
       'Le retirer : sa session se ferme (« plus accès ») ; un compte tiers ne peut pas ouvrir le board.',
     ],
   },
+  {
+    id: 'M1.8',
+    title: 'Sessions, invités et accès',
+    summary:
+      'Sessions publiques ou privées, demandes d’accès en temps réel, invités sans compte, accès temporaires.',
+    href: '#/',
+    linkLabel: 'Ouvrir un de mes boards (ci-dessus)',
+    needsApi: true,
+    multiDevice: true,
+    steps: [
+      '« Membres » : passer le board en session privée et cocher « Accepter les invités ».',
+      'Sur l’iPad, sans être connecté, ouvrir #/join/CODE : saisir un nom → « en attente d’acceptation ».',
+      'Sur l’ordinateur, le bouton « 1 demande d’accès » apparaît : accepter en Editor pour 1 heure.',
+      'L’iPad entre aussitôt dans le board ; le retirer dans « Membres » le déconnecte.',
+      'Accès « tant que je suis connecté » : quitter le board ferme la session de l’invité.',
+      'Taper 10 codes inexistants : le 11e est refusé quelques minutes (cooldown).',
+    ],
+  },
 ];

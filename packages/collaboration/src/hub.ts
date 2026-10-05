@@ -1,4 +1,4 @@
-import { can } from '@fleight/permissions';
+import { atLeast, can } from '@fleight/permissions';
 import {
   type BoardRole,
   type ClientSessionMessage,
@@ -21,7 +21,11 @@ import {
 } from './store';
 
 /** Message diffusé aux connexions d'un board ; `exclude` ne le reçoit pas. */
-type Broadcast = { payload: ServerSessionMessage; exclude?: string };
+/**
+ * Message diffusé aux connexions d'un board ; `exclude` ne le reçoit pas, et
+ * seules les connexions d'au moins `minRole` le reçoivent.
+ */
+type Broadcast = { payload: ServerSessionMessage; exclude?: string; minRole?: BoardRole };
 
 export type HubConnection = {
   /** Message de session déjà décodé (JSON) reçu de la connexion. */
@@ -58,8 +62,8 @@ type LoadedRoom = {
  */
 export type DisconnectReason = 'storage' | 'board-not-found' | 'board-deleted' | 'forbidden';
 
-/** Utilisateur authentifié d'une connexion. */
-export type HubUser = { id: string; name: string };
+/** Utilisateur authentifié d'une connexion (compte, ou invité sans compte). */
+export type HubUser = { id: string; name: string; guest?: boolean };
 
 /**
  * Rôle d'un utilisateur sur un board ; `undefined` : aucun accès.
@@ -179,6 +183,39 @@ export class CollaborationHub {
     await Promise.all(refreshes);
   }
 
+  /**
+   * Session privée : sans accès, une connexion dont l'accès est demandé attend la
+   * décision au lieu d'être refusée (`true` : une demande est en attente).
+   */
+  awaitsAccess: ((boardId: string, user: HubUser | undefined) => Promise<boolean>) | undefined;
+
+  /** Un participant authentifié (compte) a quitté un board. */
+  onLeave: ((boardId: string, userId: string) => void) | undefined;
+
+  /** Le compte est connecté au board (accès « tant qu'il est connecté »). */
+  isConnected(boardId: string, userId: string): boolean {
+    const loaded = this.#loaded.get(boardId);
+    if (!loaded) return false;
+    for (const participant of loaded.participants.values()) {
+      if (participant.userId === userId) return true;
+    }
+    return false;
+  }
+
+  /** Prévient les Co-owners et le propriétaire connectés que les demandes d'accès ont changé. */
+  notifyAccessRequests(boardId: string, pending: number): void {
+    if (!this.#loaded.has(boardId)) return;
+    void this.#pubsub.publish(channel(boardId), {
+      payload: { type: 'ACCESS_REQUESTED', pending },
+      minRole: 'co-owner',
+    });
+  }
+
+  /** Réévalue les droits de toutes les sessions (accès temporaires expirés). */
+  async refreshAllAccess(): Promise<void> {
+    await Promise.all([...this.#loaded.keys()].map((boardId) => this.refreshAccess(boardId)));
+  }
+
   /** Nombre de boards chargés en mémoire. */
   get roomCount(): number {
     return this.#rooms.size;
@@ -217,7 +254,13 @@ export class CollaborationHub {
     /** Auteur journalisé : l'utilisateur, à défaut le client (stable à travers les reconnexions). */
     let actor = user?.id ?? connectionId;
     let actorName: string | undefined = user?.name;
-    const actorType = user ? ('user' as const) : ('client' as const);
+    const actorType = user
+      ? user.guest
+        ? ('guest' as const)
+        : ('user' as const)
+      : ('client' as const);
+    /** Session privée : JOIN en attente de la décision sur la demande d'accès. */
+    let waiting: Extract<ClientSessionMessage, { type: 'JOIN' }> | undefined;
     // Les messages d'une connexion sont traités l'un après l'autre (le JOIN est asynchrone).
     let queue = Promise.resolve();
     if (disconnect) this.#disconnects.set(connectionId, disconnect);
@@ -255,65 +298,81 @@ export class CollaborationHub {
         exclude: connectionId,
       });
       this.#evictIfEmpty(boardId, loaded);
+      if (user && !user.guest) this.onLeave?.(boardId, user.id);
+    };
+
+    /** Rejoint un board : rôle vérifié, salle d'attente d'une session privée. */
+    const join = async (message: Extract<ClientSessionMessage, { type: 'JOIN' }>) => {
+      leave();
+      waiting = undefined;
+      const loaded = await this.#join(message.boardId);
+      if (loaded.missing && this.#requireExistingBoards) {
+        this.#evictIfEmpty(message.boardId, loaded);
+        disconnect?.('board-not-found');
+        return;
+      }
+      const granted = this.authorize
+        ? await this.authorize(message.boardId, user)
+        : ('editor' as const);
+      if (!granted || !can(granted, 'board.view')) {
+        this.#evictIfEmpty(message.boardId, loaded);
+        if (await this.awaitsAccess?.(message.boardId, user)) {
+          // Demande d'accès en attente : la connexion attend la décision (refreshAccess).
+          waiting = message;
+          send({ type: 'ACCESS_PENDING' });
+          return;
+        }
+        disconnect?.('forbidden');
+        return;
+      }
+      role = granted;
+      const used = new Set([...loaded.participants.values()].map(({ color }) => color));
+      const participant: Participant = {
+        connectionId,
+        name: user?.name ?? message.name,
+        ...(user && !user.guest ? { userId: user.id } : {}),
+        ...(user?.guest ? { guest: true } : {}),
+        color: pickColor(user?.id ?? message.clientId, used),
+        mode: message.mode ?? 'cursor',
+        role,
+      };
+      loaded.participants.set(connectionId, participant);
+      const unsubscribe = this.#pubsub.subscribe(
+        channel(message.boardId),
+        ({ payload, exclude, minRole }) => {
+          if (exclude === connectionId) return;
+          if (minRole && !atLeast(role, minRole)) return;
+          send(payload);
+        },
+      );
+      joined = { boardId: message.boardId, loaded, unsubscribe, clientId: message.clientId };
+      // Sans compte, le client (stable à travers les reconnexions) tient lieu d'auteur.
+      if (!user) {
+        actor = message.clientId;
+        actorName = message.name;
+      }
+      send({
+        type: 'JOINED',
+        self: connectionId,
+        role,
+        snapshot: loaded.room.snapshot(),
+        participants: [...loaded.participants.values()],
+        locks: loaded.locks.snapshot(),
+        applied: loaded.room.appliedBatchesOf(message.clientId),
+      });
+      void this.#pubsub.publish(channel(message.boardId), {
+        payload: { type: 'PARTICIPANT_JOINED', participant },
+        exclude: connectionId,
+      });
     };
 
     const handle = async (message: ClientSessionMessage) => {
       switch (message.type) {
-        case 'JOIN': {
-          leave();
-          const loaded = await this.#join(message.boardId);
-          if (loaded.missing && this.#requireExistingBoards) {
-            this.#evictIfEmpty(message.boardId, loaded);
-            disconnect?.('board-not-found');
-            return;
-          }
-          const granted = this.authorize
-            ? await this.authorize(message.boardId, user)
-            : ('editor' as const);
-          if (!granted || !can(granted, 'board.view')) {
-            this.#evictIfEmpty(message.boardId, loaded);
-            disconnect?.('forbidden');
-            return;
-          }
-          role = granted;
-          const used = new Set([...loaded.participants.values()].map(({ color }) => color));
-          const participant: Participant = {
-            connectionId,
-            name: user?.name ?? message.name,
-            ...(user ? { userId: user.id } : {}),
-            color: pickColor(user?.id ?? message.clientId, used),
-            mode: message.mode ?? 'cursor',
-            role,
-          };
-          loaded.participants.set(connectionId, participant);
-          const unsubscribe = this.#pubsub.subscribe(
-            channel(message.boardId),
-            ({ payload, exclude }) => {
-              if (exclude !== connectionId) send(payload);
-            },
-          );
-          joined = { boardId: message.boardId, loaded, unsubscribe, clientId: message.clientId };
-          // Sans compte, le client (stable à travers les reconnexions) tient lieu d'auteur.
-          if (!user) {
-            actor = message.clientId;
-            actorName = message.name;
-          }
-          send({
-            type: 'JOINED',
-            self: connectionId,
-            role,
-            snapshot: loaded.room.snapshot(),
-            participants: [...loaded.participants.values()],
-            locks: loaded.locks.snapshot(),
-            applied: loaded.room.appliedBatchesOf(message.clientId),
-          });
-          void this.#pubsub.publish(channel(message.boardId), {
-            payload: { type: 'PARTICIPANT_JOINED', participant },
-            exclude: connectionId,
-          });
+        case 'JOIN':
+          await join(message);
           break;
-        }
         case 'LEAVE':
+          waiting = undefined;
           leave();
           break;
         case 'GESTURE_END': {
@@ -493,6 +552,11 @@ export class CollaborationHub {
 
     /** Réévalue le rôle (membres modifiés) ; sans accès, la connexion est fermée. */
     const refresh = async () => {
+      // En salle d'attente : la décision est peut-être prise.
+      if (waiting && !joined) {
+        await join(waiting);
+        return;
+      }
       if (!joined || !this.authorize) return;
       const { boardId } = joined;
       const granted = await this.authorize(boardId, user);
@@ -520,7 +584,7 @@ export class CollaborationHub {
       });
     };
     this.#refreshers.set(connectionId, {
-      boardId: () => joined?.boardId,
+      boardId: () => joined?.boardId ?? waiting?.boardId,
       refresh: () => {
         // Dans la file de la connexion : après un JOIN en cours.
         queue = queue.then(refresh).catch((error: unknown) => {

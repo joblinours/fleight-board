@@ -78,3 +78,48 @@ describe('permissions du hub', () => {
     expect(owner.client.participants.map(({ name }) => name)).toEqual(['owner']);
   });
 });
+
+describe('sessions privées', () => {
+  it('salle d’attente : la connexion attend la décision, puis rejoint ou est refusée', async () => {
+    const { network, roles } = await setup({ owner: 'owner' });
+    const pending = new Set(['alice', 'bob']);
+    network.hub.awaitsAccess = async (_boardId, user) => !!user && pending.has(user.id);
+
+    const alice = network.connect('alice', { asUser: true });
+    const bob = network.connect('bob', { asUser: true });
+    await network.settle();
+    expect(alice.client.status).toBe('waiting');
+    expect(bob.client.status).toBe('waiting');
+    expect(alice.document.get('a')).toBeUndefined();
+
+    // Alice est acceptée, la demande de Bob est refusée.
+    roles.alice = 'editor';
+    pending.clear();
+    await network.hub.refreshAccess('board');
+    await network.settle();
+    expect(alice.client.status).toBe('joined');
+    expect(alice.document.get('a')).toBeDefined();
+    expect(bob.disconnects).toEqual(['forbidden']);
+  });
+
+  it('les demandes d’accès ne sont signalées qu’aux Co-owners et au propriétaire', async () => {
+    const { network, owner } = await setup({ owner: 'owner', editor: 'editor' });
+    const editor = network.connect('editor', { asUser: true });
+    await network.settle();
+    network.hub.notifyAccessRequests('board', 2);
+    await network.settle();
+    expect(owner.events.some(({ type }) => type === 'accessRequests')).toBe(true);
+    expect(editor.events.some(({ type }) => type === 'accessRequests')).toBe(false);
+  });
+
+  it('présence d’un compte et départ signalé (accès « tant qu’il est connecté »)', async () => {
+    const { network, owner } = await setup({ owner: 'owner' });
+    const left: string[] = [];
+    network.hub.onLeave = (_boardId, userId) => left.push(userId);
+    expect(network.hub.isConnected('board', 'owner')).toBe(true);
+    owner.close();
+    await network.settle();
+    expect(network.hub.isConnected('board', 'owner')).toBe(false);
+    expect(left).toEqual(['owner']);
+  });
+});

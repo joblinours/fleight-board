@@ -1,4 +1,6 @@
 import {
+  type AccessRequestStatus,
+  type AccessRequestsResponse,
   AddMemberRequestSchema,
   BoardCodeSchema,
   BoardIdSchema,
@@ -6,6 +8,9 @@ import {
   type BoardResponse,
   type BoardsResponse,
   CreateBoardRequestSchema,
+  DecideAccessRequestSchema,
+  GuestJoinRequestSchema,
+  type GuestResponse,
   TransferBoardRequestSchema,
   UpdateBoardRequestSchema,
   UpdateMemberRequestSchema,
@@ -16,6 +21,8 @@ import type { Identity } from '../auth/auth-service';
 import { parseBody } from '../auth/routes';
 import type { AuditLogReader } from '../db/audit-log';
 import { BoardError, type BoardService } from './board-service';
+import { CodeGuard } from './code-guard';
+import { setGuestCookie } from './guest-auth';
 
 const ListQuerySchema = z.object({ hidden: z.enum(['true', 'false']).default('false') });
 const AuditQuerySchema = z.object({
@@ -29,13 +36,54 @@ export async function registerBoards(
     boards,
     audit,
     requireUser,
+    requireUserOrGuest,
+    codeGuard = new CodeGuard(),
   }: {
     boards: BoardService;
     audit?: AuditLogReader | undefined;
     requireUser: preHandlerHookHandler;
+    /** Compte ou invité (cookie) : `request.identity` ou `request.guest`. */
+    requireUserOrGuest: preHandlerHookHandler;
+    codeGuard?: CodeGuard;
   },
 ) {
   const user = { preHandler: requireUser };
+  const userOrGuest = { preHandler: requireUserOrGuest };
+
+  /**
+   * Recherche par code protégée : au-delà de trop de codes inexistants, l'adresse
+   * doit attendre (429) ; un code valide remet son compteur à zéro.
+   */
+  const guarded = async <T>(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    lookup: (code: string) => Promise<T>,
+  ): Promise<T | undefined> => {
+    const retryAfter = codeGuard.retryAfter(request.ip);
+    if (retryAfter > 0) {
+      void reply
+        .code(429)
+        .header('retry-after', String(retryAfter))
+        .send({
+          error: 'CODE_COOLDOWN',
+          message: `Trop de codes invalides : réessayez dans ${Math.ceil(retryAfter / 60)} min`,
+        });
+      return undefined;
+    }
+    const code = BoardCodeSchema.safeParse((request.params as { code: string }).code);
+    try {
+      if (!code.success)
+        throw new BoardError('BOARD_NOT_FOUND', 'Aucun board ne correspond à ce code');
+      const result = await lookup(code.data);
+      codeGuard.success(request.ip);
+      return result;
+    } catch (error) {
+      if (error instanceof BoardError && error.code === 'BOARD_NOT_FOUND') {
+        codeGuard.failure(request.ip);
+      }
+      throw error;
+    }
+  };
   const identity = (request: FastifyRequest) => request.identity as Identity;
   /** Identifiant de board valide, ou réponse 404. */
   const boardId = (request: FastifyRequest, reply: FastifyReply) => {
@@ -64,13 +112,34 @@ export async function registerBoards(
     '/boards/code/:code',
     { ...user, config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
     async (request, reply): Promise<BoardResponse | undefined> => {
-      const code = BoardCodeSchema.safeParse((request.params as { code: string }).code);
-      if (!code.success) {
-        return reply.code(404).send(notFound('Aucun board ne correspond à ce code'));
-      }
-      return { board: await boards.byCode(identity(request), code.data) };
+      const board = await guarded(request, reply, (code) => boards.byCode(identity(request), code));
+      return board && { board };
     },
   );
+
+  // Rejoindre sans compte (invité) : nom affiché, cookie limité à ce board.
+  app.post(
+    '/boards/code/:code/guest',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const body = parseBody(GuestJoinRequestSchema, request.body, reply);
+      if (!body) return;
+      const joined = await guarded(request, reply, (code) => boards.joinAsGuest(code, body.name));
+      if (!joined) return;
+      setGuestCookie(request, reply, joined.token, joined.expiresAt);
+      return reply
+        .code(201)
+        .send({ guest: joined.guest, board: joined.board } satisfies GuestResponse);
+    },
+  );
+
+  // Invité de la session courante et son board.
+  app.get('/guest', userOrGuest, async (request, reply): Promise<GuestResponse | undefined> => {
+    const guest = request.guest;
+    if (!guest)
+      return reply.code(404).send({ error: 'NOT_GUEST', message: 'Pas de session invité' });
+    return { guest, board: await boards.guestBoard(guest) };
+  });
 
   app.get('/boards/:id', user, async (request, reply): Promise<BoardResponse | undefined> => {
     const id = boardId(request, reply);
@@ -125,6 +194,57 @@ export async function registerBoards(
     if (!id) return;
     const { userId } = request.params as { userId: string };
     await boards.removeMember(identity(request), id, userId);
+    return reply.code(204).send();
+  });
+
+  // Session privée : demande d'accès, état de sa demande, décision des Co-owners.
+  app.post(
+    '/boards/:id/access-requests',
+    user,
+    async (request, reply): Promise<AccessRequestStatus | undefined> => {
+      const id = boardId(request, reply);
+      if (!id) return;
+      return boards.requestAccess(identity(request), id);
+    },
+  );
+
+  app.get(
+    '/boards/:id/access-request',
+    userOrGuest,
+    async (request, reply): Promise<AccessRequestStatus | undefined> => {
+      const id = boardId(request, reply);
+      if (!id) return;
+      const requester = request.guest
+        ? { guestId: request.guest.id }
+        : { userId: identity(request).userId };
+      return boards.requestStatus(requester, id);
+    },
+  );
+
+  app.get(
+    '/boards/:id/access-requests',
+    user,
+    async (request, reply): Promise<AccessRequestsResponse | undefined> => {
+      const id = boardId(request, reply);
+      if (!id) return;
+      return { requests: await boards.listRequests(identity(request), id) };
+    },
+  );
+
+  app.post('/boards/:id/access-requests/:requestId', user, async (request, reply) => {
+    const id = boardId(request, reply);
+    const body = id && parseBody(DecideAccessRequestSchema, request.body, reply);
+    if (!id || !body) return;
+    const { requestId } = request.params as { requestId: string };
+    await boards.decide(identity(request), id, requestId, body);
+    return reply.code(204).send();
+  });
+
+  app.delete('/boards/:id/guests/:guestId', user, async (request, reply) => {
+    const id = boardId(request, reply);
+    if (!id) return;
+    const { guestId } = request.params as { guestId: string };
+    await boards.removeGuest(identity(request), id, guestId);
     return reply.code(204).send();
   });
 
