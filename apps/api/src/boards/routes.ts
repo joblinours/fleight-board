@@ -2,6 +2,7 @@ import {
   type AccessRequestStatus,
   type AccessRequestsResponse,
   AddMemberRequestSchema,
+  AuditQuerySchema,
   BoardCodeSchema,
   BoardIdSchema,
   type BoardMembersResponse,
@@ -25,9 +26,6 @@ import { CodeGuard } from './code-guard';
 import { setGuestCookie } from './guest-auth';
 
 const ListQuerySchema = z.object({ hidden: z.enum(['true', 'false']).default('false') });
-const AuditQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(1000).default(200),
-});
 
 /** Whiteboards : création, liste, code court, modification, suppression, audit. */
 export async function registerBoards(
@@ -264,7 +262,7 @@ export async function registerBoards(
       if (!(await boards.canReadAudit(identity(request), id))) {
         throw new BoardError('FORBIDDEN', 'Réservé aux Co-owners, au propriétaire et aux Admins');
       }
-      return { entries: await audit.list(id, query.limit) };
+      return audit.query({ ...query, boardId: id });
     });
   }
 }

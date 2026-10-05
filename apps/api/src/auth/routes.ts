@@ -1,6 +1,7 @@
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import {
+  AdminAuditQuerySchema,
   type ApiError,
   ChangePasswordRequestSchema,
   CreateUserRequestSchema,
@@ -10,7 +11,7 @@ import {
   UpdateUserRequestSchema,
 } from '@fleight/protocol';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { type ZodType, z } from 'zod';
+import type { ZodType } from 'zod';
 import { AssetError } from '../assets/asset-service';
 import { BoardError } from '../boards/board-service';
 import type { AuditLogReader } from '../db/audit-log';
@@ -29,10 +30,6 @@ declare module 'fastify' {
     identity?: Identity;
   }
 }
-
-const LimitSchema = z.object({
-  limit: z.coerce.number().int().min(1).max(1000).default(200),
-});
 
 /**
  * Comptes, sessions et administration des utilisateurs. Appelé directement sur
@@ -192,10 +189,11 @@ export async function registerAuth(app: FastifyInstance, options: AuthRoutesOpti
   );
 
   if (audit) {
+    // Audit global : comptes et tous les boards, filtrable.
     app.get('/admin/audit', admin, async (request, reply) => {
-      const query = parseBody(LimitSchema, request.query, reply);
+      const query = parseBody(AdminAuditQuerySchema, request.query, reply);
       if (!query) return;
-      return { entries: await audit.listAccounts(query.limit) };
+      return audit.query(query);
     });
   }
 

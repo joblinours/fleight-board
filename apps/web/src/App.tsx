@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AdminPage } from './admin/AdminPage';
-import { AuditPage } from './audit/AuditPage';
+import { AdminAuditPage, AuditPage } from './audit/AuditPage';
 import { AccountPage, LoginPage, nextRoute, RegisterPage } from './auth/AuthPages';
 import { refreshSession, useSession } from './auth/session';
 import { BenchPage } from './bench/BenchPage';
@@ -88,6 +88,8 @@ export function App() {
       return <AccountPage />;
     case '/admin':
       return <AdminPage />;
+    case '/admin/audit':
+      return <AdminAuditPage />;
     default:
       return <HomePage />;
   }

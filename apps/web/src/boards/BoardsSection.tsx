@@ -168,6 +168,7 @@ function BoardCard({
       </p>
       <div className="boards-actions">
         <a href={`#/board/${board.id}`}>Ouvrir</a>
+        {can(board.role, 'board.audit') && <a href={`#/audit/${board.id}`}>Audit</a>}
         {can(board.role, 'board.settings') && (
           <>
             <button type="button" onClick={() => setEditing(!editing)}>

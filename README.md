@@ -71,7 +71,7 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 | Verrouillage temporaire des objets en cours d'édition | 🧪 Prototypé (M0.7) |
 | Curseurs et présence (modes « Drawing only » / « Cursor visible ») | 🧪 Implémenté (M1.6) : curseurs nommés à la couleur du participant, liste des participants, mode choisi par chacun et mémorisé |
 | Undo/redo individuel (chacun n'annule que ses propres actions) | 🧪 Prototypé (M0.8) |
-| Audit log complet et non annulable | 🧪 Prototypé (M0.10) : une entrée par opération finale, annulations comprises |
+| Audit log complet et non annulable | 🧪 Implémenté (M0.10, M1.9) : une entrée par opération finale (annulations comprises) et par événement de gestion ; page d'audit filtrable, paginée et exportable (CSV), audit global pour l'Admin |
 | Travail local temporaire pendant une coupure réseau, puis resynchronisation | 🧪 Prototypé (M0.9) |
 | Mode présentation (navigation, zoom et focus synchronisés) | _(prévu)_ |
 
@@ -359,7 +359,7 @@ Variables d'environnement (`apps/api/.env`, modèle : `apps/api/.env.example`) :
 | `GET`, `POST /admin/users` | Admin : liste et création de comptes (mot de passe temporaire généré) |
 | `PATCH`, `DELETE /admin/users/:id` | Admin : nom, e-mail, rôle, activation / validation, suppression |
 | `POST /admin/users/:id/reset-password` | Admin : mot de passe temporaire, sessions fermées |
-| `GET /admin/audit?limit=200` | Admin : événements de compte (connexions, administration) |
+| `GET /admin/audit` | Admin : audit global (`scope=all\|accounts\|boards`, `boardId`) avec les mêmes filtres que l'audit d'un board |
 | `GET`, `POST /boards` | Ses whiteboards et ceux partagés avec lui, avec son rôle (`?hidden=true` : avec les masqués) ; création (nom, description, canvas infini ou standard) |
 | `GET /boards/code/:code` | Board correspondant à un code court (rate limiting par IP ; `403` si réservé à ses membres) |
 | `GET`, `PATCH`, `DELETE /boards/:id` | Détails (Viewer) ; renommage, description, masquage, session publique/privée, rôle par défaut, invités (Co-owner) ; suppression immédiate (Owner) |
@@ -372,7 +372,7 @@ Variables d'environnement (`apps/api/.env`, modèle : `apps/api/.env.example`) :
 | `GET /guest` ; `DELETE /boards/:id/guests/:guestId` | Invité de la session et son board ; retrait d'un invité (Co-owner) |
 | `POST /boards/:id/assets` | Import d'une image (Editor ; corps brut ; type vérifié dans le fichier : PNG, JPEG, GIF, WebP ; SVG refusé) |
 | `GET /assets/:id` | Image importée (session requise, contenu immuable) |
-| `GET /boards/:id/audit?limit=200` | Audit d'un board, du plus récent au plus ancien (Co-owner, Owner, Admin) |
+| `GET /boards/:id/audit` | Audit d'un board, du plus récent au plus ancien (Co-owner, Owner, Admin). Filtres : `category` (`objects`, `board`, `access`, `accounts`), `actor`, `q` (nom, auteur ou objet), `objectId`, `from`, `to` ; pagination `limit` (≤ 500) et `before` (curseur `nextBefore`) |
 | `WS /ws` | WebSocket, session requise ; le premier message doit être `HELLO` avec la version du protocole |
 
 ## Roadmap

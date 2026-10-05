@@ -1285,3 +1285,56 @@ button.link {
 .board-members select {
   max-width: 100%;
 }
+
+.audit {
+  max-width: 72rem;
+}
+
+.audit-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.75rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.audit-filter {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.85em;
+  color: GrayText;
+}
+
+.audit-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.audit-chips {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.audit-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: #2563eb;
+  font: inherit;
+  cursor: pointer;
+}
+
+.audit-actor-type {
+  margin-left: 0.4rem;
+  color: GrayText;
+  font-size: 0.85em;
+}
+
+.board-role-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
