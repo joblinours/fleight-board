@@ -1,10 +1,14 @@
 import {
+  AddMemberRequestSchema,
   BoardCodeSchema,
   BoardIdSchema,
+  type BoardMembersResponse,
   type BoardResponse,
   type BoardsResponse,
   CreateBoardRequestSchema,
+  TransferBoardRequestSchema,
   UpdateBoardRequestSchema,
+  UpdateMemberRequestSchema,
 } from '@fleight/protocol';
 import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
@@ -64,14 +68,14 @@ export async function registerBoards(
       if (!code.success) {
         return reply.code(404).send(notFound('Aucun board ne correspond à ce code'));
       }
-      return { board: await boards.byCode(code.data) };
+      return { board: await boards.byCode(identity(request), code.data) };
     },
   );
 
   app.get('/boards/:id', user, async (request, reply): Promise<BoardResponse | undefined> => {
     const id = boardId(request, reply);
     if (!id) return;
-    return { board: await boards.get(id) };
+    return { board: await boards.get(identity(request), id) };
   });
 
   app.patch('/boards/:id', user, async (request, reply): Promise<BoardResponse | undefined> => {
@@ -88,14 +92,57 @@ export async function registerBoards(
     return reply.code(204).send();
   });
 
-  // Audit d'un board, du plus récent au plus ancien : propriétaire ou Admin.
+  // Membres : lecture par tout participant, gestion par les Co-owners et le propriétaire.
+  app.get(
+    '/boards/:id/members',
+    user,
+    async (request, reply): Promise<BoardMembersResponse | undefined> => {
+      const id = boardId(request, reply);
+      if (!id) return;
+      return boards.members(identity(request), id);
+    },
+  );
+
+  app.post('/boards/:id/members', user, async (request, reply) => {
+    const id = boardId(request, reply);
+    const body = id && parseBody(AddMemberRequestSchema, request.body, reply);
+    if (!id || !body) return;
+    await boards.addMember(identity(request), id, body);
+    return reply.code(201).send(await boards.members(identity(request), id));
+  });
+
+  app.patch('/boards/:id/members/:userId', user, async (request, reply) => {
+    const id = boardId(request, reply);
+    const body = id && parseBody(UpdateMemberRequestSchema, request.body, reply);
+    if (!id || !body) return;
+    const { userId } = request.params as { userId: string };
+    await boards.updateMember(identity(request), id, userId, body.role);
+    return boards.members(identity(request), id);
+  });
+
+  app.delete('/boards/:id/members/:userId', user, async (request, reply) => {
+    const id = boardId(request, reply);
+    if (!id) return;
+    const { userId } = request.params as { userId: string };
+    await boards.removeMember(identity(request), id, userId);
+    return reply.code(204).send();
+  });
+
+  app.post('/boards/:id/transfer', user, async (request, reply) => {
+    const id = boardId(request, reply);
+    const body = id && parseBody(TransferBoardRequestSchema, request.body, reply);
+    if (!id || !body) return;
+    return { board: await boards.transfer(identity(request), id, body.userId) };
+  });
+
+  // Audit d'un board, du plus récent au plus ancien : Co-owners, propriétaire et Admins.
   if (audit) {
     app.get('/boards/:id/audit', user, async (request, reply) => {
       const id = boardId(request, reply);
       const query = id && parseBody(AuditQuerySchema, request.query, reply);
       if (!id || !query) return;
       if (!(await boards.canReadAudit(identity(request), id))) {
-        throw new BoardError('FORBIDDEN', 'Réservé au propriétaire du board et aux Admins');
+        throw new BoardError('FORBIDDEN', 'Réservé aux Co-owners, au propriétaire et aux Admins');
       }
       return { entries: await audit.list(id, query.limit) };
     });

@@ -95,8 +95,13 @@ export async function buildApp({
       await registerBoards(app, { boards, audit, requireUser: requireUser() });
       // Board supprimé : ses participants sont déconnectés.
       boards.onDeleted = (boardId) => collaboration.evict(boardId);
+      // Permissions des sessions : rôle vérifié à l'entrée, réévalué quand les membres changent.
+      collaboration.authorize = (boardId, user) =>
+        user ? boards.roleOf(user.id, boardId) : undefined;
+      boards.onAccessChanged = (boardId) => collaboration.refreshAccess(boardId);
     }
     if (assets) {
+      if (boards) assets.roleOf = (userId, boardId) => boards.roleOf(userId, boardId);
       await registerAssets(app, { assets, requireUser: requireUser(), maxBytes: maxUploadBytes });
     }
   }

@@ -38,6 +38,9 @@ importers:
       '@fleight/collaboration':
         specifier: workspace:*
         version: link:../../packages/collaboration
+      '@fleight/permissions':
+        specifier: workspace:*
+        version: link:../../packages/permissions
       '@fleight/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -84,6 +87,9 @@ importers:
       '@fleight/document':
         specifier: workspace:*
         version: link:../../packages/document
+      '@fleight/permissions':
+        specifier: workspace:*
+        version: link:../../packages/permissions
       '@fleight/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -137,6 +143,9 @@ importers:
       '@fleight/document':
         specifier: workspace:*
         version: link:../document
+      '@fleight/permissions':
+        specifier: workspace:*
+        version: link:../permissions
       '@fleight/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -145,6 +154,12 @@ importers:
         version: link:../shared
 
   packages/document:
+    dependencies:
+      '@fleight/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
+  packages/permissions:
     dependencies:
       '@fleight/protocol':
         specifier: workspace:*

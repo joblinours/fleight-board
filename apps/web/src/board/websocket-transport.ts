@@ -7,7 +7,12 @@ export function websocketUrl(): string {
 }
 
 /** Fermetures définitives : session révoquée, board inexistant, board supprimé. */
-export const CloseCodes = { Revoked: 4401, BoardNotFound: 4404, BoardDeleted: 4410 } as const;
+export const CloseCodes = {
+  Revoked: 4401,
+  Forbidden: 4403,
+  BoardNotFound: 4404,
+  BoardDeleted: 4410,
+} as const;
 const FINAL_CLOSE_CODES = new Set<number>(Object.values(CloseCodes));
 
 /** Délais de reconnexion successifs (ms) ; le dernier est répété. */

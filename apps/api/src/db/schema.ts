@@ -4,7 +4,9 @@ import type {
   BoardAuditAction,
   BoardCanvas,
   BoardObject,
+  DefaultRole,
   ImageMimeType,
+  MemberRole,
   Operation,
 } from '@fleight/protocol';
 import {
@@ -35,6 +37,8 @@ export const boards = pgTable(
     ownerId: text('owner_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
     /** Masqué de la liste de son propriétaire. */
     hidden: boolean('hidden').notNull().default(false),
+    /** Accès des utilisateurs connectés non membres (lien ou code). */
+    defaultRole: text('default_role').$type<DefaultRole>().notNull().default('editor'),
     /** Séquence du dernier lot appliqué. */
     seq: bigint('seq', { mode: 'number' }).notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -43,6 +47,30 @@ export const boards = pgTable(
   (table) => [
     uniqueIndex('boards_code_idx').on(table.code),
     index('boards_owner_idx').on(table.ownerId),
+  ],
+);
+
+/** Membres d'un board (le propriétaire n'y figure pas : il est dans `boards.owner_id`). */
+export const boardMembers = pgTable(
+  'board_members',
+  {
+    boardId: text('board_id')
+      .notNull()
+      .references(() => boards.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references((): AnyPgColumn => users.id, { onDelete: 'cascade' }),
+    role: text('role').$type<MemberRole>().notNull(),
+    /** Qui a attribué le rôle. */
+    grantedBy: text('granted_by').references((): AnyPgColumn => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.boardId, table.userId] }),
+    index('board_members_user_idx').on(table.userId),
   ],
 );
 

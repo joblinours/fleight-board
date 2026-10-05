@@ -1,5 +1,5 @@
 {
-  "name": "@fleight/collaboration",
+  "name": "@fleight/permissions",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,9 +11,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fleight/document": "workspace:*",
-    "@fleight/protocol": "workspace:*",
-    "@fleight/shared": "workspace:*",
-    "@fleight/permissions": "workspace:*"
+    "@fleight/protocol": "workspace:*"
   }
 }

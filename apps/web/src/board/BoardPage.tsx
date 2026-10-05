@@ -1,7 +1,9 @@
 import { BoardEditor, type InputMode, type ToolName } from '@fleight/canvas';
 import { CollaborationClient, type ConnectionStatus } from '@fleight/collaboration';
+import { can, ROLE_LABELS } from '@fleight/permissions';
 import {
   AssetResponseSchema,
+  type BoardRole,
   type BoardSummary,
   type Participant,
   type PresenceMode,
@@ -10,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { refreshSession, useSession } from '../auth/session';
 import { createImageCache } from './image-cache';
 import { createLockService } from './lock-service';
+import { MembersPanel } from './MembersPanel';
 import { PropertiesPanel } from './PropertiesPanel';
 import { sampleDiagram } from './sample-diagram';
 import { CloseCodes, connectWebSocket } from './websocket-transport';
@@ -25,6 +28,7 @@ const REJECTION_MESSAGES: Record<string, string> = {
   LOCKED: 'en cours de modification par un autre participant',
   INVALID_OPERATION: 'devenue(s) impossible(s)',
   NOT_JOINED: 'envoyée(s) hors session',
+  FORBIDDEN: 'non autorisée(s) pour votre rôle',
 };
 
 const TOOLS: Array<{ name: ToolName; label: string; key: string }> = [
@@ -79,6 +83,11 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
   const [participants, setParticipants] = useState<readonly Participant[]>([]);
   const [presenceMode, setPresenceMode] = useState<PresenceMode>(storedPresenceMode);
   const [self, setSelf] = useState<string | undefined>();
+  /** Rôle sur le board : celui de l'API à l'ouverture, puis celui de la session. */
+  const [role, setRole] = useState<BoardRole | null>(board?.role ?? null);
+  const [showMembers, setShowMembers] = useState(false);
+  // Rôle lu une fois à l'ouverture ; la session le met ensuite à jour (onRole).
+  const initialRoleRef = useRef(board?.role ?? null);
   const clientRef = useRef<CollaborationClient | null>(null);
   const [rejection, setRejection] = useState<string | null>(null);
   const [history, setHistory] = useState({ canUndo: false, canRedo: false });
@@ -106,6 +115,10 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
             setSelf(clientRef.current?.connectionId);
           },
           onCursors: () => editorRef.current?.refresh(),
+          onRole: (next) => {
+            setRole(next);
+            if (editorRef.current) editorRef.current.readOnly = !can(next, 'board.edit');
+          },
           onParticipants: (list) => {
             setParticipants(list);
             editorRef.current?.refresh();
@@ -127,6 +140,8 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
     const disconnect = client
       ? connectWebSocket(client, undefined, (code) => {
           if (code === CloseCodes.BoardDeleted) setEnded('Ce board vient d’être supprimé.');
+          else if (code === CloseCodes.Forbidden)
+            setEnded('Vous n’avez pas (ou plus) accès à ce board.');
           else if (code === CloseCodes.BoardNotFound) setEnded('Ce board n’existe plus.');
           else void refreshSession();
         })
@@ -179,6 +194,8 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
       },
     });
     editorRef.current = editor;
+    // Lecture seule tant que le rôle ne permet pas de modifier (rôle connu à l'ouverture).
+    if (boardId) editor.readOnly = !can(initialRoleRef.current, 'board.edit');
 
     let sized = false;
     const resizeObserver = new ResizeObserver(([entry]) => {
@@ -290,6 +307,8 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
   }, [uploadImage]);
 
   const frame = editingId ? editorRef.current?.textEditorFrame(editingId) : undefined;
+  // Board local : tout est permis ; board partagé : selon le rôle.
+  const canEdit = !boardId || can(role, 'board.edit');
   void viewVersion;
 
   return (
@@ -338,7 +357,7 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
       )}
 
       <div className="board-toolbar">
-        {TOOLS.map(({ name, label, key }) => (
+        {TOOLS.filter(({ name }) => canEdit || name === 'select').map(({ name, label, key }) => (
           <button
             key={name}
             type="button"
@@ -349,7 +368,7 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
             {label}
           </button>
         ))}
-        {boardId && (
+        {boardId && canEdit && (
           <label className="board-upload" title="Importer une image (ou glisser-déposer, coller)">
             Image
             <input
@@ -363,36 +382,43 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
             />
           </label>
         )}
+        {!canEdit && <span className="board-readonly">Lecture seule</span>}
         <span className="board-separator" />
-        <button
-          type="button"
-          title="Annuler (Ctrl/⌘+Z)"
-          disabled={!history.canUndo}
-          onClick={() => editorRef.current?.undo()}
-        >
-          Annuler
-        </button>
-        <button
-          type="button"
-          title="Rétablir (Ctrl/⌘+Maj+Z)"
-          disabled={!history.canRedo}
-          onClick={() => editorRef.current?.redo()}
-        >
-          Rétablir
-        </button>
-        <button
-          type="button"
-          disabled={selectionSize === 0}
-          onClick={() => editorRef.current?.deleteSelection()}
-        >
-          Supprimer
-        </button>
+        {canEdit && (
+          <>
+            <button
+              type="button"
+              title="Annuler (Ctrl/⌘+Z)"
+              disabled={!history.canUndo}
+              onClick={() => editorRef.current?.undo()}
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              title="Rétablir (Ctrl/⌘+Maj+Z)"
+              disabled={!history.canRedo}
+              onClick={() => editorRef.current?.redo()}
+            >
+              Rétablir
+            </button>
+            <button
+              type="button"
+              disabled={selectionSize === 0}
+              onClick={() => editorRef.current?.deleteSelection()}
+            >
+              Supprimer
+            </button>
+          </>
+        )}
         <button type="button" onClick={() => editorRef.current?.fitContent()}>
           Recadrer
         </button>
-        <button type="button" onClick={loadSample}>
-          Exemple
-        </button>
+        {canEdit && (
+          <button type="button" onClick={loadSample}>
+            Exemple
+          </button>
+        )}
         <select
           aria-label="Mode de saisie"
           value={mode}
@@ -405,7 +431,15 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
         <a href="#/">Accueil</a>
       </div>
 
-      <PropertiesPanel editor={editorRef.current} tool={tool} />
+      {canEdit && <PropertiesPanel editor={editorRef.current} tool={tool} />}
+
+      {showMembers && boardId && (
+        <MembersPanel
+          boardId={boardId}
+          selfId={session.status === 'authenticated' ? session.user.id : undefined}
+          onClose={() => setShowMembers(false)}
+        />
+      )}
 
       {boardId && (
         <div className="board-session">
@@ -420,6 +454,12 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
           <span className="board-room">
             {board?.name} · code <strong>{board?.code}</strong>
           </span>
+          <span className="board-role">
+            {role ? `Votre rôle : ${ROLE_LABELS[role]}` : ''}
+            <button type="button" onClick={() => setShowMembers(!showMembers)}>
+              Membres
+            </button>
+          </span>
           <label className="board-presence">
             Présence
             <select
@@ -431,19 +471,22 @@ export function BoardPage({ board }: { board?: BoardSummary }) {
             </select>
           </label>
           <ul className="board-participants" aria-label="Participants">
-            {participants.map(({ connectionId, name, color, mode: participantMode }) => (
-              <li key={connectionId}>
-                <span className="board-participant-dot" style={{ background: color }} />
-                {name}
-                {connectionId === self && <span className="board-participant-self"> (vous)</span>}
-                <span
-                  className="board-participant-mode"
-                  title={participantMode === 'cursor' ? 'Cursor visible' : 'Drawing only'}
-                >
-                  {participantMode === 'cursor' ? 'curseur' : 'dessin seul'}
-                </span>
-              </li>
-            ))}
+            {participants.map(
+              ({ connectionId, name, color, mode: participantMode, role: participantRole }) => (
+                <li key={connectionId}>
+                  <span className="board-participant-dot" style={{ background: color }} />
+                  {name}
+                  <span className="board-participant-role">{ROLE_LABELS[participantRole]}</span>
+                  {connectionId === self && <span className="board-participant-self"> (vous)</span>}
+                  <span
+                    className="board-participant-mode"
+                    title={participantMode === 'cursor' ? 'Cursor visible' : 'Drawing only'}
+                  >
+                    {participantMode === 'cursor' ? 'curseur' : 'dessin seul'}
+                  </span>
+                </li>
+              ),
+            )}
           </ul>
         </div>
       )}

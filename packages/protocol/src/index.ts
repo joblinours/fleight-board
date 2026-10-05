@@ -29,6 +29,8 @@ export {
   UsersResponseSchema,
 } from './auth';
 export {
+  type AddMemberRequest,
+  AddMemberRequestSchema,
   type Asset,
   type AssetResponse,
   AssetResponseSchema,
@@ -38,6 +40,10 @@ export {
   BoardCanvasSchema,
   BoardCodeSchema,
   BoardDescriptionSchema,
+  type BoardMember,
+  BoardMemberSchema,
+  type BoardMembersResponse,
+  BoardMembersResponseSchema,
   BoardNameSchema,
   type BoardResponse,
   BoardResponseSchema,
@@ -52,8 +58,12 @@ export {
   STANDARD_FORMATS,
   type StandardFormat,
   standardCanvas,
+  type TransferBoardRequest,
+  TransferBoardRequestSchema,
   type UpdateBoardRequest,
   UpdateBoardRequestSchema,
+  type UpdateMemberRequest,
+  UpdateMemberRequestSchema,
 } from './boards';
 export {
   type ClientHello,
@@ -108,6 +118,15 @@ export {
   type TextObject,
   TextSchema,
 } from './objects';
+export {
+  BOARD_ROLES,
+  type BoardRole,
+  BoardRoleSchema,
+  type DefaultRole,
+  DefaultRoleSchema,
+  type MemberRole,
+  MemberRoleSchema,
+} from './roles';
 export {
   type AckMessage,
   AckMessageSchema,

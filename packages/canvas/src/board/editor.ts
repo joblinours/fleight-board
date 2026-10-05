@@ -187,6 +187,7 @@ export class BoardEditor {
   readonly #gestureLocks = new Set<string>();
   /** Objet verrouillé pendant l'édition de son texte. */
   #textLock: string | undefined;
+  #readOnly = false;
 
   constructor(options: BoardEditorOptions) {
     this.#options = options;
@@ -289,7 +290,27 @@ export class BoardEditor {
     this.router.mode = mode;
   }
 
+  /**
+   * Lecture seule (rôle Viewer) : seule la sélection reste disponible, aucune
+   * modification n'est appliquée ni envoyée.
+   */
+  get readOnly(): boolean {
+    return this.#readOnly;
+  }
+
+  set readOnly(value: boolean) {
+    if (value === this.#readOnly) return;
+    if (value) {
+      this.#tool.cancel(this.#context);
+      this.setTool('select');
+      this.#endStyleGesture();
+    }
+    this.#readOnly = value;
+    this.#overlayRenderer.requestRender();
+  }
+
   setTool(name: ToolName): void {
+    if (this.#readOnly && name !== 'select') return;
     if (this.#tool.name === name) return;
     this.#tool.cancel(this.#context);
     this.#tool = this.#tools[name];
@@ -306,7 +327,7 @@ export class BoardEditor {
 
   /** Applique des opérations locales ; elles entrent dans l'historique d'annulation. */
   apply(operations: DocumentOperation[]): void {
-    if (!operations.length) return;
+    if (!operations.length || this.#readOnly) return;
     const gestureId = this.#gestureId;
     this.#history.track(
       this.document,
@@ -336,8 +357,8 @@ export class BoardEditor {
   }
 
   #revert(intent: 'undo' | 'redo'): void {
-    // Pas d'annulation au milieu d'un geste.
-    if (this.#gestureId) return;
+    // Pas d'annulation au milieu d'un geste, ni en lecture seule.
+    if (this.#gestureId || this.#readOnly) return;
     const locks = this.#options.locks;
     const options = { blocked: (id: string) => locks?.lockedBy(id) !== undefined };
     const apply = (operations: DocumentOperation[]) => this.#send(operations, undefined, intent);
@@ -425,6 +446,7 @@ export class BoardEditor {
    * placées au-dessus de tout. Retourne `false` s'il n'y a rien à coller.
    */
   paste(text?: string): boolean {
+    if (this.#readOnly) return false;
     let objects: BoardObject[] | undefined;
     if (text !== undefined) {
       objects = parseObjects(text);
@@ -889,6 +911,7 @@ export class BoardEditor {
   }
 
   #lock(ids: Iterable<string>): boolean {
+    if (this.#readOnly) return false;
     const locks = this.#options.locks;
     const list = [...ids];
     if (!locks) return true;
@@ -900,6 +923,7 @@ export class BoardEditor {
   }
 
   #editText(id: string): void {
+    if (this.#readOnly) return;
     const locks = this.#options.locks;
     if (locks?.lockedBy(id)) return;
     this.#releaseTextLock();
