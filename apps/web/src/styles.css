@@ -82,6 +82,10 @@
   pointer-events: auto;
 }
 
+.editor-topbar.hidden {
+  display: none;
+}
+
 .editor-title {
   display: flex;
   align-items: center;
@@ -240,6 +244,39 @@
   cursor: not-allowed;
 }
 
+/* Famille d'outils (mode compact) : un bouton, les autres outils dans un menu dépliant. */
+.tool-family {
+  position: relative;
+}
+
+.tool-button.has-family::after {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 0 5px 5px;
+  border-color: transparent transparent currentColor;
+  opacity: 0.55;
+  content: "";
+}
+
+.tool-flyout {
+  position: absolute;
+  top: -6px;
+  left: calc(100% + 11px);
+  z-index: 30;
+  display: flex;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  animation: pop-in 120ms ease-out;
+}
+
 .tool-button input[type="file"] {
   position: absolute;
   inset: 0;
@@ -267,6 +304,26 @@
 
 .editor-bottombar > :only-child {
   margin-left: auto;
+}
+
+.zoom-level {
+  min-width: 56px;
+  height: 32px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.zoom-level:hover {
+  background: var(--surface-hover);
+  color: var(--text);
 }
 
 .editor-requests {
@@ -328,6 +385,10 @@
   border-bottom: 1px solid var(--border);
 }
 
+.shortcuts kbd {
+  white-space: nowrap;
+}
+
 .shortcuts dd {
   margin: 0;
   color: var(--text-2);
@@ -354,6 +415,52 @@
   box-shadow: var(--shadow-md);
   backdrop-filter: blur(8px);
   font-size: 12.5px;
+}
+
+.properties-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: -4px -4px -4px 0;
+}
+
+.properties-head strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Propriétés repliées : un bouton à la place du panneau. */
+.properties-toggle {
+  position: absolute;
+  top: 76px;
+  right: max(12px, env(safe-area-inset-right));
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: var(--shadow-md);
+  color: var(--text-2);
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+
+.properties-toggle:hover {
+  color: var(--text);
+}
+
+.properties-toggle-color {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--surface);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--border-strong);
 }
 
 .properties-actions {
@@ -626,19 +733,68 @@
   gap: 6px;
 }
 
-/* Tablette en portrait : îlots plus compacts. */
-@media (max-width: 760px) {
-  .editor-title {
-    max-width: 28vw;
+/* Écran tactile (iPad, Apple Pencil) : cibles d'au moins 44 px. */
+@media (pointer: coarse) {
+  .tool-button {
+    width: 44px;
+    height: 44px;
   }
 
-  .editor-alone {
+  .tool-button.small {
+    width: 40px;
+    height: 40px;
+  }
+
+  .editor-island .btn-sm {
+    min-width: 38px;
+    height: 38px;
+  }
+
+  .board-swatch {
+    width: 30px;
+    height: 30px;
+  }
+
+  .board-property input[type="range"] {
+    height: 28px;
+  }
+
+  .zoom-level {
+    height: 38px;
+  }
+}
+
+/* Tablette en portrait, petit écran : îlots plus compacts, boutons sans libellé. */
+@media (max-width: 900px) {
+  .shortcuts {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-title {
+    max-width: 30vw;
+  }
+
+  .editor-alone,
+  .label-wide {
     display: none;
   }
 
+  /* Propriétés en bas à droite, au-dessus de la barre du bas. */
   .properties {
     top: auto;
-    bottom: 72px;
+    bottom: calc(max(12px, env(safe-area-inset-bottom)) + 64px);
     max-height: 45%;
+  }
+
+  .properties-toggle {
+    top: auto;
+    bottom: calc(max(12px, env(safe-area-inset-bottom)) + 64px);
+  }
+}
+
+/* Écran peu haut (iPad en paysage avec clavier, petit portable) : barres resserrées. */
+@media (max-height: 640px) {
+  .properties {
+    max-height: calc(100% - 140px);
   }
 }

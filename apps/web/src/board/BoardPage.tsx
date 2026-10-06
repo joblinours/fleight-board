@@ -12,12 +12,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../auth/api';
 import { refreshSession, useSession } from '../auth/session';
 import { Avatar, Badge, Button, copyText, Menu, MenuItem, Modal, toast } from '../ui/components';
-import { Icon, type IconName } from '../ui/Icon';
+import { useMediaQuery, useStoredState } from '../ui/hooks';
+import { Icon } from '../ui/Icon';
 import { createImageCache } from './image-cache';
 import { createLockService } from './lock-service';
 import { MembersPanel } from './MembersPanel';
 import { PropertiesPanel } from './PropertiesPanel';
 import { sampleDiagram } from './sample-diagram';
+import { ALL_TOOLS, ToolRail } from './ToolRail';
 import { CloseCodes, connectWebSocket } from './websocket-transport';
 
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
@@ -35,33 +37,6 @@ const REJECTION_MESSAGES: Record<string, string> = {
   FORBIDDEN: 'non autorisée(s) pour votre rôle',
 };
 
-type ToolSpec = { name: ToolName; label: string; key: string; icon: IconName };
-
-/** Outils, par groupes (séparés dans la barre d'outils). */
-const TOOL_GROUPS: ToolSpec[][] = [
-  [
-    { name: 'select', label: 'Sélection', key: 'V', icon: 'pointer' },
-    { name: 'lasso', label: 'Lasso', key: 'Q', icon: 'lasso' },
-  ],
-  [
-    { name: 'pen', label: 'Stylo', key: 'P', icon: 'pen' },
-    { name: 'highlighter', label: 'Surligneur', key: 'H', icon: 'highlighter' },
-    { name: 'eraser', label: 'Gomme', key: 'E', icon: 'eraser' },
-  ],
-  [
-    { name: 'rectangle', label: 'Rectangle', key: 'R', icon: 'square' },
-    { name: 'ellipse', label: 'Ellipse', key: 'O', icon: 'circle' },
-    { name: 'polygon', label: 'Polygone', key: 'G', icon: 'pentagon' },
-    { name: 'text', label: 'Texte', key: 'T', icon: 'type' },
-  ],
-  [
-    { name: 'line', label: 'Ligne', key: 'L', icon: 'line' },
-    { name: 'arrow', label: 'Flèche', key: 'A', icon: 'arrow' },
-    { name: 'connector', label: 'Connecteur', key: 'C', icon: 'connector' },
-  ],
-  [{ name: 'frame', label: 'Frame', key: 'F', icon: 'frame' }],
-];
-
 const INPUT_MODES: Array<{ value: InputMode; label: string; hint: string }> = [
   { value: 'auto', label: 'Automatique', hint: 'Stylet et souris dessinent, le doigt déplace' },
   { value: 'pencil-only', label: 'Pencil uniquement', hint: 'Seul l’Apple Pencil dessine' },
@@ -78,8 +53,26 @@ const SHORTCUTS: Array<[string, string]> = [
   ['Ctrl/⌘ + ] / [', 'Premier plan / arrière-plan'],
   ['Suppr', 'Supprimer la sélection'],
   ['Échap', 'Revenir à la sélection'],
+  ['Flèches', 'Déplacer la sélection (Maj : ×10), ou la vue'],
+  ['Ctrl/⌘ + + / −', 'Zoomer / dézoomer'],
+  ['Ctrl/⌘ + 0', 'Zoom à 100 %'],
+  ['Maj + 1', 'Tout afficher'],
+  ['Ctrl/⌘ + \\', 'Masquer / afficher l’interface'],
+  ['?', 'Cette aide'],
   ['Double-clic', 'Éditer le texte, le titre ou le label'],
 ];
+
+/** Tablette (pointeur tactile) ou écran peu haut : barre d'outils compacte. */
+const COMPACT_QUERY = '(pointer: coarse), (max-height: 820px)';
+
+/** Saisie en cours dans un champ : les raccourcis de l'application ne s'appliquent pas. */
+function typing(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable || target.tagName === 'TEXTAREA') return true;
+  return (
+    target instanceof HTMLInputElement && target.type !== 'range' && target.type !== 'checkbox'
+  );
+}
 
 /** Message bref en bas de l'écran (refus, import impossible…). */
 function notify(message: string): void {
@@ -133,6 +126,13 @@ export function BoardPage({
   const [role, setRole] = useState<BoardRole | null>(board?.role ?? null);
   const [showMembers, setShowMembers] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const compact = useMediaQuery(COMPACT_QUERY);
+  const [propertiesCollapsed, setPropertiesCollapsed] = useStoredState<boolean>(
+    'fleight.propertiesCollapsed',
+    false,
+  );
+  /** Interface masquée : seule la barre d'outils reste, pour dessiner sur tout l'écran. */
+  const [focus, setFocus] = useState(false);
   // Rôle lu une fois à l'ouverture ; la session le met ensuite à jour (onRole).
   const initialRoleRef = useRef(board?.role ?? null);
   const clientRef = useRef<CollaborationClient | null>(null);
@@ -290,6 +290,33 @@ export function BoardPage({
     };
   }, [boardId, guestName, role]);
 
+  // Raccourcis de l'interface (ceux de l'éditeur sont gérés par BoardEditor).
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (typing(event.target)) return;
+      if ((event.ctrlKey || event.metaKey) && (event.key === '\\' || event.code === 'Backslash')) {
+        event.preventDefault();
+        setFocus((current) => !current);
+      } else if (event.key === '?' && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        setShowShortcuts(true);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  // Safari (iPad) : le pincement zoome le board, jamais la page.
+  useEffect(() => {
+    const prevent = (event: Event) => event.preventDefault();
+    document.addEventListener('gesturestart', prevent);
+    document.addEventListener('gesturechange', prevent);
+    return () => {
+      document.removeEventListener('gesturestart', prevent);
+      document.removeEventListener('gesturechange', prevent);
+    };
+  }, []);
+
   const changePresenceMode = (next: PresenceMode) => {
     setPresenceMode(next);
     clientRef.current?.setPresenceMode(next);
@@ -427,7 +454,7 @@ export function BoardPage({
       )}
 
       {/* Barre supérieure : retour, nom du board, statut, participants, partage. */}
-      <header className="editor-topbar">
+      <header className={`editor-topbar${focus ? ' hidden' : ''}`} aria-hidden={focus}>
         <div className="editor-island">
           <a href="#/" className="btn btn-ghost btn-icon btn-sm" title="Retour aux tableaux">
             <Icon name="arrowLeft" size={17} />
@@ -530,17 +557,18 @@ export function BoardPage({
               onClick={() => void copyText(shareLink(board), `Lien copié · code ${board.code}`)}
               title={`Copier le lien de partage (code ${board.code})`}
             >
-              Partager
+              <span className="label-wide">Partager</span>
             </Button>
           )}
           {managing && (
             <Button
               size="sm"
               icon="users"
+              aria-label="Membres et accès"
               onClick={() => setShowMembers(!showMembers)}
               className={accessRequests > 0 ? 'has-badge' : undefined}
             >
-              Membres
+              <span className="label-wide">Membres</span>
               {accessRequests > 0 && <span className="count-badge">{accessRequests}</span>}
             </Button>
           )}
@@ -585,6 +613,9 @@ export function BoardPage({
               </MenuItem>
             ))}
             <div className="divider" />
+            <MenuItem icon="eyeOff" onClick={() => setFocus(true)}>
+              Masquer l’interface
+            </MenuItem>
             <MenuItem icon="key" onClick={() => setShowShortcuts(true)}>
               Raccourcis clavier
             </MenuItem>
@@ -593,30 +624,15 @@ export function BoardPage({
       </header>
 
       {/* Outils, à gauche. */}
-      <nav className="editor-toolrail" aria-label="Outils">
-        {TOOL_GROUPS.map((group, index) => {
-          const tools = group.filter(({ name }) => canEdit || name === 'select');
-          if (!tools.length) return null;
-          return (
-            <div key={tools[0]?.name ?? index} className="toolrail-group">
-              {tools.map(({ name, label, key, icon }) => (
-                <button
-                  key={name}
-                  type="button"
-                  className={`tool-button${tool === name ? ' active' : ''}`}
-                  title={`${label} (${key})`}
-                  aria-label={label}
-                  aria-pressed={tool === name}
-                  onClick={() => editorRef.current?.setTool(name)}
-                >
-                  <Icon name={icon} size={19} />
-                </button>
-              ))}
-            </div>
-          );
-        })}
-        {boardId && canEdit && !guestName && (
-          <div className="toolrail-group">
+      <ToolRail
+        tool={tool}
+        compact={compact}
+        canEdit={canEdit}
+        onSelect={(name) => editorRef.current?.setTool(name)}
+        extra={
+          boardId &&
+          canEdit &&
+          !guestName && (
             <label className="tool-button" title="Importer une image (ou glisser-déposer, coller)">
               <Icon name="image" size={19} />
               <input
@@ -630,61 +646,116 @@ export function BoardPage({
                 }}
               />
             </label>
-          </div>
-        )}
-      </nav>
+          )
+        }
+      />
 
-      {/* Historique et cadrage, en bas. */}
-      <div className="editor-bottombar">
-        {canEdit && (
+      {/* Historique, zoom et affichage, en bas. */}
+      {focus ? (
+        <div className="editor-bottombar">
           <div className="editor-island">
             <Button
               variant="ghost"
               size="sm"
-              icon="undo"
-              title="Annuler (Ctrl/⌘+Z)"
-              aria-label="Annuler"
-              disabled={!history.canUndo}
-              onClick={() => editorRef.current?.undo()}
+              icon="eye"
+              title="Afficher l’interface (Ctrl/⌘+\)"
+              onClick={() => setFocus(false)}
+            >
+              Afficher l’interface
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="editor-bottombar">
+          {canEdit && (
+            <div className="editor-island">
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="undo"
+                title="Annuler (Ctrl/⌘+Z)"
+                aria-label="Annuler"
+                disabled={!history.canUndo}
+                onClick={() => editorRef.current?.undo()}
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="redo"
+                title="Rétablir (Ctrl/⌘+Maj+Z)"
+                aria-label="Rétablir"
+                disabled={!history.canRedo}
+                onClick={() => editorRef.current?.redo()}
+              />
+              {selectionSize > 0 && (
+                <>
+                  <span className="editor-divider" />
+                  <Button
+                    variant="danger-ghost"
+                    size="sm"
+                    icon="trash"
+                    title="Supprimer la sélection (Suppr)"
+                    aria-label="Supprimer la sélection"
+                    onClick={() => editorRef.current?.deleteSelection()}
+                  />
+                </>
+              )}
+            </div>
+          )}
+          <div className="editor-island">
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="minimize"
+              title="Dézoomer (Ctrl/⌘+−)"
+              aria-label="Dézoomer"
+              onClick={() => editorRef.current?.zoomBy(0.8)}
+            />
+            <button
+              type="button"
+              className="zoom-level"
+              title="Zoom à 100 % (Ctrl/⌘+0)"
+              onClick={() => editorRef.current?.resetZoom()}
+            >
+              {Math.round((editorRef.current?.zoom ?? 1) * 100)} %
+            </button>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="plus"
+              title="Zoomer (Ctrl/⌘++)"
+              aria-label="Zoomer"
+              onClick={() => editorRef.current?.zoomBy(1.25)}
+            />
+            <span className="editor-divider" />
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="fit"
+              title="Tout afficher (Maj+1)"
+              aria-label="Tout afficher"
+              onClick={() => editorRef.current?.fitContent()}
             />
             <Button
               variant="ghost"
               size="sm"
-              icon="redo"
-              title="Rétablir (Ctrl/⌘+Maj+Z)"
-              aria-label="Rétablir"
-              disabled={!history.canRedo}
-              onClick={() => editorRef.current?.redo()}
+              icon="eyeOff"
+              title="Masquer l’interface (Ctrl/⌘+\)"
+              aria-label="Masquer l’interface"
+              onClick={() => setFocus(true)}
             />
-            {selectionSize > 0 && (
-              <>
-                <span className="editor-divider" />
-                <Button
-                  variant="danger-ghost"
-                  size="sm"
-                  icon="trash"
-                  title="Supprimer la sélection (Suppr)"
-                  aria-label="Supprimer la sélection"
-                  onClick={() => editorRef.current?.deleteSelection()}
-                />
-              </>
-            )}
           </div>
-        )}
-        <div className="editor-island">
-          <Button
-            variant="ghost"
-            size="sm"
-            icon="fit"
-            title="Recadrer sur le contenu"
-            onClick={() => editorRef.current?.fitContent()}
-          >
-            Recadrer
-          </Button>
         </div>
-      </div>
+      )}
 
-      {canEdit && !showMembers && <PropertiesPanel editor={editorRef.current} tool={tool} />}
+      {canEdit && !showMembers && !focus && (
+        <PropertiesPanel
+          editor={editorRef.current}
+          tool={tool}
+          collapsed={propertiesCollapsed}
+          onCollapsedChange={setPropertiesCollapsed}
+        />
+      )}
 
       {showMembers && managing && (
         <MembersPanel
@@ -706,9 +777,14 @@ export function BoardPage({
       )}
 
       {showShortcuts && (
-        <Modal title="Raccourcis clavier" onClose={() => setShowShortcuts(false)}>
+        <Modal
+          title="Raccourcis clavier"
+          description="Au clavier de l’ordinateur ou au clavier externe de l’iPad (⌘ = Ctrl)."
+          wide
+          onClose={() => setShowShortcuts(false)}
+        >
           <dl className="shortcuts">
-            {TOOL_GROUPS.flat().map(({ name, label, key }) => (
+            {ALL_TOOLS.map(({ name, label, key }) => (
               <div key={name}>
                 <dt>
                   <kbd>{key}</kbd>

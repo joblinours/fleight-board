@@ -350,4 +350,23 @@ export const MILESTONES: Milestone[] = [
       'Ou avec Portainer : stack « Repository » sur ce dépôt (docs/deployment.md).',
     ],
   },
+  {
+    id: 'M1.11',
+    title: 'Interface tablette',
+    summary:
+      'Barre d’outils compacte, panneaux repliables, interface masquée, portrait/paysage, raccourcis du clavier externe.',
+    href: '#/',
+    linkLabel: 'Ouvrir mes tableaux',
+    needsApi: true,
+    multiDevice: true,
+    steps: [
+      'Sur l’iPad, ouvrir un tableau : la barre d’outils est compacte (formes et lignes regroupées).',
+      'Toucher « Rectangle » puis le toucher à nouveau : Ellipse et Polygone se déplient ; choisir Ellipse, qui reste affichée.',
+      'Replier les propriétés (bouton « — ») : un bouton palette les remplace ; l’état est gardé au rechargement.',
+      'Bouton œil barré (en bas à droite) : seule la barre d’outils reste ; dessiner au Pencil, puis « Afficher l’interface ».',
+      'Tourner l’iPad : en portrait, Partager et Membres n’ont plus de libellé et les propriétés passent en bas.',
+      'Pincer pour zoomer : le niveau s’affiche en bas (toucher le pourcentage = 100 %) ; la page elle-même ne zoome jamais.',
+      'Avec un clavier externe : ⌘Z, ⌘D, flèches (Maj : ×10) sur une sélection, ⌘+ / ⌘−, ⌘0, Maj+1, ⌘\\, et « ? » pour l’aide.',
+    ],
+  },
 ];

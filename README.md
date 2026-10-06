@@ -96,7 +96,12 @@ L'iPad avec Apple Pencil est une **cible de premier rang**, pas une adaptation :
 - palm rejection, modes Pencil-only et Touch-only ;
 - zoom et pan multi-touch ;
 - rendu local immédiat, indépendant de la qualité réseau ;
-- interface dont les panneaux secondaires peuvent être masqués.
+- interface tactile (M1.11) :
+  - barre d'outils compacte, où chaque famille d'outils se déplie ;
+  - cibles de 44 px ;
+  - panneau de propriétés repliable, et mode « interface masquée » ;
+  - disposition portrait et paysage ;
+- clavier externe : raccourcis avec ⌘, flèches pour déplacer, zoom au clavier, `?` pour l'aide.
 
 ## Principes
 
