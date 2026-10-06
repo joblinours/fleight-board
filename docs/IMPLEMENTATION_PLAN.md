@@ -264,81 +264,129 @@ Au-delà de l'objectif, sur un seul board : 100 utilisateurs → ACK p50 115 ms,
 
 ### M1.1 — Authentification et comptes
 
-- [ ] Login username/email + mot de passe (Argon2id)
-- [ ] Sessions en cookie `HttpOnly`/`Secure`/`SameSite`, expiration et rotation
-- [ ] Rate limiting et protection brute force
-- [ ] Premier Admin créé au démarrage via variables d'environnement
-- [ ] Admin : créer / désactiver / supprimer des comptes, réinitialiser un mot de passe
-- [ ] Demande de création de compte depuis l'interface
+- [x] Login username/email + mot de passe (Argon2id)
+- [x] Sessions en cookie `HttpOnly`/`Secure`/`SameSite`, expiration et rotation
+- [x] Rate limiting et protection brute force
+- [x] Premier Admin créé au démarrage via variables d'environnement
+- [x] Admin : créer / désactiver / supprimer des comptes, réinitialiser un mot de passe
+- [x] Demande de création de compte depuis l'interface
+
+→ **Validé** : tests PostgreSQL (connexion par nom ou e-mail, cookie, blocage après 5 échecs, limite par IP, renouvellement et expiration des sessions, demande puis validation, mot de passe temporaire, révocation, droits Admin, contrôle d'origine, WebSocket authentifié et fermé à la désactivation) et parcours complet dans deux navigateurs.
 
 ### M1.2 — Whiteboards
 
-- [ ] Création : nom, description, canvas Standard (A4, A3, A2, 16:9, 4:3, Custom) ou Infinite
-- [ ] Liste, renommage, suppression (immédiate en v1), masquage
-- [ ] Code court à 6 caractères (alphabet sans `O 0 I 1 S 5`)
+- [x] Création : nom, description, canvas Standard (A4, A3, A2, 16:9, 4:3, Custom) ou Infinite
+- [x] Liste, renommage, suppression (immédiate en v1), masquage
+- [x] Code court à 6 caractères (alphabet sans `O 0 I 1 S 5`)
+
+→ **Validé** : tests PostgreSQL (création infinie ou standard, liste et masquage, code insensible à la casse, droits du propriétaire, suppression immédiate, identifiant choisi, audit, WebSocket refusé sur un board inexistant et fermé à la suppression) et parcours dans deux navigateurs (création A4 paysage, rejoindre par code, renommer, masquer, suppression pendant la session).
 
 ### M1.3 — Objets complets
 
-- [ ] Primitives : rectangle, ellipse, ligne, flèche, polygone, texte, image
-- [ ] Édition de texte (overlay DOM au-dessus du canvas)
-- [ ] Upload d'images (limites côté serveur, `BlobStorage`)
-- [ ] Dessin libre : stylo, surligneur, gomme, couleur, épaisseur, opacité
-- [ ] Panneau de propriétés
+- [x] Primitives : rectangle, ellipse, ligne, flèche, polygone, texte, image
+- [x] Édition de texte (overlay DOM au-dessus du canvas)
+- [x] Upload d'images (limites côté serveur, `BlobStorage`)
+- [x] Dessin libre : stylo, surligneur, gomme, couleur, épaisseur, opacité
+- [x] Panneau de propriétés
+
+→ **Validé** : tests des outils (polygone, ligne, flèche, surligneur, gomme), des propriétés par type d'objet, de la géométrie du polygone et de la détection des images ; tests PostgreSQL de l'import (type lu dans le fichier, dimensions, déduplication, refus d'un SVG, limite de taille, droits) ; parcours dans le navigateur avec un second participant.
 
 ### M1.4 — Sélection, groupes, frames
 
-- [ ] Sélection simple, multiple, au lasso / rectangle
-- [ ] Copier, coller, dupliquer, supprimer
-- [ ] Grouper / dégrouper
-- [ ] Frames : titre, contenu, ordre, déplacement avec le contenu
+- [x] Sélection simple, multiple, au lasso / rectangle
+- [x] Copier, coller, dupliquer, supprimer
+- [x] Grouper / dégrouper
+- [x] Frames : titre, contenu, ordre, déplacement avec le contenu
+
+→ **Validé** : tests du document (contenu des frames, groupes, copier-coller avec remappage, ordre) et des outils (rectangle de sélection, lasso, groupes, frame déplacée avec son contenu, presse-papiers) ; parcours dans le navigateur, dont un collage d'un board à l'autre.
 
 ### M1.5 — Connecteurs
 
-- [ ] Connecteurs orthogonaux avec routage simple
-- [ ] Flèches, labels, reconnexion par glisser
+- [x] Connecteurs orthogonaux avec routage simple
+- [x] Flèches, labels, reconnexion par glisser
+
+→ **Validé** : tests du routage (Z, L, ligne droite, cible derrière la sortie, extrémités libres), du contact sur le tracé et le label, de la reconnexion par glisser (autre forme, point libre, verrou) ; parcours dans deux navigateurs (tracé qui suit une forme déplacée chez l'autre participant).
 
 ### M1.6 — Présence
 
-- [ ] Curseurs, usernames et couleurs
-- [ ] Modes « Drawing only » / « Cursor visible »
-- [ ] Liste des participants
+- [x] Curseurs, usernames et couleurs
+- [x] Modes « Drawing only » / « Cursor visible »
+- [x] Liste des participants
+
+→ **Validé** : tests du relais des curseurs (débit limité côté client et serveur, « Drawing only » appliqué par le serveur, mode conservé à la reconnexion, curseur effacé au départ) et des couleurs ; parcours dans deux navigateurs.
 
 ### M1.7 — Permissions
 
-- [ ] Package `permissions` : matrice rôle → actions, testée unitairement
-- [ ] Rôles `Viewer < Editor < Presenter < Co-owner < Owner`
-- [ ] Délégation limitée à son propre rôle ; Admin global plafonné à Co-owner
-- [ ] Vérification serveur sur chaque requête REST et chaque message WebSocket
-- [ ] Gestion des membres depuis l'interface
+- [x] Package `permissions` : matrice rôle → actions, testée unitairement
+- [x] Rôles `Viewer < Editor < Presenter < Co-owner < Owner`
+- [x] Délégation limitée à son propre rôle ; Admin global plafonné à Co-owner
+- [x] Vérification serveur sur chaque requête REST et chaque message WebSocket
+- [x] Gestion des membres depuis l'interface
+
+→ **Validé** : matrice et délégation testées unitairement ; tests du hub (lecture seule, refus, rôles diffusés, changement et révocation en direct) ; tests PostgreSQL (membres, accès des non-membres, matrice sur les routes, délégation, Admin sans droit implicite, transfert, import réservé aux Editors, WebSocket) ; parcours à deux comptes dans le navigateur.
 
 ### M1.8 — Sessions, invités et accès
 
-- [ ] Rejoindre par code (rate limiting, cooldown)
-- [ ] Session publique : entrée directe
-- [ ] Session privée : demande d'accès acceptée/refusée par le détenteur, en temps réel
-- [ ] Guest : username, sans compte
-- [ ] Accès permanent, temporaire, ou valable tant que le détenteur est connecté
+- [x] Rejoindre par code (rate limiting, cooldown)
+- [x] Session publique : entrée directe
+- [x] Session privée : demande d'accès acceptée/refusée par le détenteur, en temps réel
+- [x] Guest : username, sans compte
+- [x] Accès permanent, temporaire, ou valable tant que le détenteur est connecté
+
+→ **Validé** : tests du hub (salle d'attente, notifications réservées aux Co-owners, départ du détenteur), du cooldown des codes et de la validité des accès ; tests PostgreSQL (session publique, demande et acceptation en direct, refus, expiration, accès lié à la présence, invités publics et privés, cooldown) ; parcours dans trois navigateurs (compte et invitée en attente, acceptation en direct, fin d'accès au départ du détenteur).
 
 ### M1.9 — Audit (interface)
 
-- [ ] Consultation de l'audit d'un board (filtrable)
-- [ ] Consultation globale pour l'Admin
+- [x] Consultation de l'audit d'un board (filtrable)
+- [x] Consultation globale pour l'Admin
+
+### M1.9.5 — Interface (design system)
+
+Étape ajoutée à la demande : une interface de qualité « SaaS » avant le déploiement.
+
+- [x] Design system : jetons de couleur, typographie (Inter auto-hébergée), thème clair/sombre suivant le système, jeu d'icônes SVG maison
+- [x] Composants : boutons, champs, badges, avatars, menus déroulants, fenêtres modales, notifications (toasts), états vides
+- [x] Cadre de l'application : barre latérale (repliée en icônes sur tablette), menu du compte, en-têtes de page
+- [x] Pages : accueil, connexion/inscription, tableau de bord (onglets, recherche, menus de carte, création et rejoindre en modale), compte, administration, audit, salle d'attente et invités
+- [x] Éditeur : îlots flottants (barre du haut, rail d'outils, annuler/rétablir, propriétés), menu « ⋯ », tiroir « Membres et accès », raccourcis clavier
+
+→ **Validé** : typecheck, lint et tests ; revue visuelle de toutes les pages en clair et en sombre, à 1366 px et à la largeur d'un iPad.
 
 ### M1.10 — Déploiement
 
-- [ ] Dockerfiles multi-stage (web servi par l'API ou un Nginx, à trancher en M1.10)
-- [ ] `docker-compose.yml` + `.env.example`, volumes, healthchecks `/health` et `/ready`
-- [ ] Migrations automatiques au démarrage
-- [ ] Logs structurés (JSON)
-- [ ] Documentation : installation, Portainer, sauvegarde/restauration, mise à jour
+- [x] Dockerfile multi-stage : une image, le frontend est servi par l'API
+- [x] `docker-compose.yml` + `.env.example`, volumes, healthchecks `/health` et `/ready`
+- [x] Migrations automatiques au démarrage
+- [x] Logs structurés (JSON)
+- [x] Documentation : installation, Portainer, sauvegarde/restauration, mise à jour (`docs/deployment.md`)
+- [x] Image publiée sur GHCR par la CI, après un test de la stack Compose
+
+→ **Validé** :
+- tests (configuration, frontend servi avec le préfixe `/api`, cache) ;
+- image construite et stack Compose démarrée : migrations, premier Admin (Argon2 natif), healthchecks ;
+- parcours complet dans le navigateur contre le conteneur : connexion, création, dessin en temps réel, persistance après rechargement ;
+- import d'image sur le volume, sous l'utilisateur non-root ;
+- sauvegarde puis restauration (base et fichiers) ;
+- arrêt propre sur `SIGTERM`.
 
 ### M1.11 — Interface tablette
 
-- [ ] Barre d'outils compacte, panneaux masquables
-- [ ] Portrait / paysage, clavier externe
-- [ ] Tests manuels sur ton iPad à chaque jalon
+- [x] Barre d'outils compacte, panneaux masquables
+- [x] Portrait / paysage, clavier externe
+- [ ] Tests manuels sur ton iPad à chaque jalon (fiche M1.11)
 
-**Sortie de Phase 1** : release `v0.1.0` fusionnée sur `main`.
+→ **Implémenté** :
+- **barre d'outils compacte** sur écran tactile ou peu haut : un bouton par famille (sélection/lasso, formes, lignes), qui déplie les autres outils au second appui et garde le dernier choisi ;
+- cibles de 44 px au doigt ;
+- **panneau de propriétés repliable** (choix mémorisé) ;
+- **interface masquée** : seule la barre d'outils reste ;
+- **zoom à l'écran** : −, niveau (retour à 100 %), +, tout afficher ;
+- **portrait** : boutons sans libellé, propriétés en bas ; le pincement de Safari ne zoome jamais la page ;
+- **clavier externe** : ⌘ comme Ctrl, flèches (déplacement de la sélection ou de la vue), zoom, Maj+1, ⌘+\\, `?`.
+
+Tests : correspondance des touches (dispositions QWERTY et AZERTY) ; parcours dans le navigateur en émulation iPad, en portrait et en paysage, et au clavier (quatre déplacements aux flèches = une seule action annulable). Reste à valider sur ton iPad.
+
+**Sortie de Phase 1** : release `v0.1.0` fusionnée sur `main` (`CHANGELOG.md`).
 
 ---
 
@@ -371,6 +419,19 @@ Au-delà de l'objectif, sur un seul board : 100 utilisateurs → ACK p50 115 ms,
 | Date | Décision |
 |---|---|
 | 2026-10-01 | Plan validé ; décisions D1 à D22 actées |
+| 2026-10-02 | M1.3 : ligne et flèche sont des connecteurs à extrémités libres (même objet, sans accrochage) ; polygone à sommets normalisés dans son cadre ; gomme « objet » (efface les traits à main levée touchés) ; images stockées sous leur empreinte SHA-256 (dédupliquées), type lu dans le fichier et SVG refusé (risque de script) ; les fichiers d'un board supprimé restent sur disque, nettoyage prévu avec la rétention (Phase 2) ; un réglage du panneau devient aussi le style des prochains objets. Dans un patch, `null` **retire** une propriété facultative : sans cela, annuler un réglage d'opacité sur un objet qui n'en avait pas produisait `undefined`, perdu en JSON — le client et le serveur divergeaient |
+| 2026-10-02 | M1.4 : un groupe est un `groupId` partagé (pas d'objet conteneur) : un appui sur un membre sélectionne tout le groupe, grouper des objets déjà groupés les fusionne. Une frame est un objet placé sous le contenu ; son contenu n'est pas stocké mais calculé (objets entièrement à l'intérieur) au début du déplacement, sans ce que d'autres participants modifient ; on la saisit par son bord ou son bandeau de titre. Copier/coller passe par le presse-papiers système (texte préfixé, validé au collage), donc fonctionne entre boards ; une extrémité de connecteur accrochée à un objet non copié devient un point libre |
+| 2026-10-02 | M1.5 : le tracé n'est pas stocké mais recalculé à l'affichage depuis les extrémités (`routing: orthogonal`, absent = droit, donc les connecteurs existants ne changent pas) : chaque client obtient le même tracé sans opération supplémentaire quand une forme bouge. Routage simple : sortie perpendiculaire à l'ancrage sur 24 unités, puis un coude (L) ou deux (Z), sans contournement d'obstacles. Le label est centré à mi-longueur du tracé ; son emprise est estimée sans mesure du texte pour que le test de contact reste indépendant du DOM. L'outil Connecteur trace en orthogonal par défaut, Ligne et Flèche restent droites |
+| 2026-10-02 | M1.6 : la couleur d'un participant est attribuée par le serveur (une couleur libre du board, dérivée de l'utilisateur pour rester stable) et sert au curseur comme aux verrous. Les curseurs sont relayés sans être enregistrés ni journalisés, en coordonnées monde (chacun les voit à sa place quel que soit son zoom), limités à ~20 envois/s par le client et 50/s par le serveur. « Drawing only » est appliqué par le serveur : il ne relaie pas le curseur d'un participant dans ce mode, même si son client l'envoie. Le mode est une préférence du navigateur, renvoyée à chaque connexion |
+| 2026-10-02 | M1.7 : le propriétaire reste dans `boards.owner_id`, les autres rôles dans `board_members` ; « Owner » ne s'attribue pas, il se transfère (l'ancien propriétaire devient Co-owner), ce qui plafonne naturellement toute délégation — Admin compris — à Co-owner. L'Admin global n'a aucun droit implicite sur un board (il garde la lecture de l'audit). En attendant les sessions publiques/privées (M1.8), chaque board règle l'accès des non-membres qui ont le lien ou le code : Editor (défaut, comportement antérieur), Viewer ou aucun ; un rôle de membre l'emporte même s'il est plus faible. Le hub reçoit une fonction `authorize` : rôle vérifié au JOIN, puis sur chaque OPS/LOCK ; quand les membres changent, il réévalue les sessions ouvertes (nouveau rôle diffusé, verrous rendus, déconnexion 4403 sans accès) |
+| 2026-10-05 | M1.8 : la session est publique (entrée directe avec le rôle par défaut, Viewer ou Editor) ou privée (demande d'accès) ; l'ancien réglage « membres seulement » de M1.7 devient une session privée (migration). La salle d'attente est une connexion WebSocket gardée par le hub (`ACCESS_PENDING`) tant qu'une demande est en attente : la décision la fait entrer (`JOINED`) ou la ferme (4403), sans sondage. Les demandes sont signalées (`ACCESS_REQUESTED`) aux seules connexions Co-owner et plus. Un accès accordé est permanent, temporaire, ou lié à la présence de la personne qui l'accorde (colonnes `expires_at` et `while_connected`) ; le hub réévalue les sessions au départ d'un compte et toutes les 30 s. Invités : table `guests`, cookie `fleight_guest` (hash du jeton), limités à un board, Viewer ou Editor, 24 h au plus, refusés tant que le board ne les accepte pas. Cooldown des codes en mémoire (10 codes inexistants en 10 min → 5 min d'attente), en plus du rate limiting |
+| 2026-10-05 | M1.9 : une seule requête d'audit filtrée côté serveur (famille d'actions, auteur, recherche dans le nom de l'auteur ou l'objet, objet, période), paginée par curseur sur l'identifiant (`before` / `nextBefore`, stable pendant que l'audit grandit) ; l'audit d'un board et l'audit global de l'Admin partagent filtres et page. L'export CSV se fait côté client, sur les entrées chargées (D12). La page « suit en direct » la première page tant qu'on n'a pas chargé d'entrées plus anciennes |
+| 2026-10-06 | **Fin de Phase 1** : release `v0.1.0` (Core MVP) proposée sur `main` ; versions des packages alignées sur 0.1.0, `CHANGELOG.md` créé. Le tag `v0.1.0` publie l'image `ghcr.io/joblinours/fleight-board:0.1.0` |
+| 2026-10-06 | M1.11 : le mode compact se déclenche par media query (`pointer: coarse`, ou hauteur ≤ 820 px), pas par détection d'appareil : un iPad avec clavier et trackpad reste « tactile », un portable peu haut en profite aussi. Une famille d'outils garde le dernier outil choisi ; le premier appui active l'outil, le second déplie la famille (pas d'appui long, peu fiable avec le Pencil). Les raccourcis de l'éditeur passent par une fonction pure (`keyboardCommand`), testée ; ⌘ et Ctrl sont équivalents, et les touches sont reconnues par leur position (`code`) quand la disposition change le caractère (AZERTY). Les déplacements aux flèches rapprochés forment une seule action annulable, comme les réglages au curseur (même mécanisme de lot, verrous compris). « Masquer l'interface » garde la barre d'outils, indispensable pour dessiner au Pencil |
+| 2026-10-06 | M1.10 : **une seule image** — l'API (Fastify) sert le frontend construit : une origine pour les pages, l'API et le WebSocket (ni CORS ni configuration côté navigateur), une seule chose à déployer et à superviser ; un Nginx séparé n'apporterait rien tant qu'il n'y a qu'une instance. Le frontend appelle l'API sous `/api` comme en développement ; le préfixe est retiré au routage (`rewriteUrl`), et les fichiers construits vont dans `static/` pour ne pas croiser la route des images importées `/assets/:id`. L'API est livrée en **un fichier** (esbuild, packages internes inclus) : seul Argon2, module natif, est copié avec son binaire ; image Alpine, utilisateur non-root, `HEALTHCHECK` sur `/ready`. Migrations appliquées à chaque démarrage. Logs pino en JSON (horodatage ISO), sondes non journalisées. Une variable vide vaut une variable absente (docker-compose transmet `ADMIN_EMAIL=`). La CI publie `ghcr.io/joblinours/fleight-board` (`dev`, `latest` pour `main`, et chaque version taguée) après avoir démarré la stack Compose et s'y être connectée |
+| 2026-10-05 | M1.9.5 : pas de bibliothèque de composants (pas de dépendance d'interface, contrôle total du rendu tactile) : des jetons CSS (variables, redéfinies pour le thème sombre) et une dizaine de composants React maison ; icônes SVG dessinées dans le code ; police Inter servie par l'application (pas de CDN, auto-hébergement). Menus et modales rendus dans un portail pour ne pas être coupés par leur conteneur. Le canvas reste blanc en thème sombre (c'est la feuille) ; seule l'interface autour change |
+| 2026-10-02 | M1.2 : les boards sont créés par l'API (plus de création implicite au premier JOIN) ; un board existant reste ouvrable par tout utilisateur connecté qui a son lien ou son code jusqu'aux permissions (M1.7) et aux sessions publiques/privées (M1.8). Supprimer le compte du propriétaire conserve ses boards (propriétaire vide, à réattribuer en M1.7). Formats en unités monde à 96 par pouce (A4 = 794 × 1123) ; les objets peuvent déborder de la page |
+| 2026-10-02 | M1.1 : l'auteur journalisé devient l'**utilisateur** (nom du compte affiché aux autres participants) ; la détection de conflits reste par **client** (deux appareils d'un même compte sont traités comme deux participants). Le WebSocket exige une session ; l'audit d'un board est réservé aux Admins en attendant les propriétaires (M1.2). Cookie `Secure` seulement en HTTPS, pour que l'iPad fonctionne en HTTP sur le réseau local de développement |
 | 2026-10-02 | **Fin de Phase 0 : GO** pour la Phase 1 (rapport `docs/poc-report.md` validé) |
 | 2026-10-02 | M0.11 : **enregistrement groupé** (group commit) — les lots arrivés pendant l'enregistrement d'un board partent ensemble dans la transaction suivante, l'`ACK` restant postérieur à l'enregistrement. À 50 utilisateurs actifs, l'ACK passe de 340 ms (p50) à 8 ms : une transaction par lot plafonnait un board à ~190 lots/s |
 | 2026-10-02 | M0.11 : deux bugs de convergence trouvés par le test de charge (sur le vrai WebSocket, quand l'enregistrement prend du retard sur les états complets envoyés immédiatement) et corrigés côté client — (1) un lot diffusé après un `JOINED`/`SNAPSHOT` qui l'inclut déjà était réappliqué et ramenait des objets en arrière : un lot de séquence déjà connue est désormais ignoré ; (2) les lots envoyés avant une demande de resynchronisation étaient réappliqués par-dessus l'état complet qui les incluait déjà, écrasant des modifications plus récentes : ils sont retirés de la file à la réception de l'état. Le test en mémoire simule désormais un enregistrement lent pour couvrir ces cas |

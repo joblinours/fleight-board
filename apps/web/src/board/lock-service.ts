@@ -1,31 +1,15 @@
 import type { LockOwner, LockService } from '@fleight/canvas';
 import type { CollaborationClient } from '@fleight/collaboration';
 
-const PARTICIPANT_COLORS = [
-  '#e11d48',
-  '#7c3aed',
-  '#0891b2',
-  '#ea580c',
-  '#16a34a',
-  '#db2777',
-  '#2563eb',
-];
-
-/** Couleur stable d'un participant, dérivée de son identifiant de connexion. */
-export function participantColor(connectionId: string): string {
-  let hash = 0;
-  for (const char of connectionId) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return PARTICIPANT_COLORS[hash % PARTICIPANT_COLORS.length] ?? '#e11d48';
-}
-
 /** Verrous de l'éditeur adossés au client de collaboration. */
 export function createLockService(client: CollaborationClient): LockService {
-  const owner = (connectionId: string): LockOwner => ({
-    name:
-      client.participants.find((participant) => participant.connectionId === connectionId)?.name ??
-      'Un participant',
-    color: participantColor(connectionId),
-  });
+  const owner = (connectionId: string): LockOwner => {
+    const participant = client.participants.find(
+      (current) => current.connectionId === connectionId,
+    );
+    // Couleur attribuée par le serveur : la même que le curseur du participant.
+    return { name: participant?.name ?? 'Un participant', color: participant?.color ?? '#e11d48' };
+  };
 
   return {
     lockedBy(id) {

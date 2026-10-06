@@ -4,9 +4,18 @@ export {
   type GestureInfo,
   type LockService,
   type OperationSink,
+  type RemoteCursor,
+  type StyleChange,
+  stylePatch,
 } from './board/editor';
 export { HANDLES, type Handle, handleAt, handlePosition, resizeBox } from './board/handles';
-export { boardPainters } from './board/painters';
+export {
+  type KeyboardCommand,
+  type KeyInput,
+  keyboardCommand,
+  TOOL_SHORTCUTS,
+} from './board/keyboard';
+export { boardPainters, createBoardPainters, type ImageSource } from './board/painters';
 export { type BoardSceneItem, toSceneItem } from './board/scene-items';
 export { syncScene } from './board/scene-sync';
 export { Selection, type SelectionListener } from './board/selection';
@@ -52,6 +61,7 @@ export {
   type GridOptions,
   gridSpacing,
   type ItemPainter,
+  type Page,
   type RendererOptions,
   type RenderStats,
   type ViewState,

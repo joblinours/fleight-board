@@ -6,6 +6,8 @@ import { type LoadReport, runLoad } from './load-test';
  *   pnpm load --users 2,5,20,50 --duration 30
  * `--board <nom>` fait agir les utilisateurs simulés sur ce board, à regarder
  * (et utiliser) en même temps dans un navigateur.
+ * Les clients simulés se connectent avec `--user`/`--password`, par défaut le
+ * premier Admin de `apps/api/.env` (ADMIN_USERNAME / ADMIN_PASSWORD).
  */
 const { values } = parseArgs({
   options: {
@@ -15,13 +17,23 @@ const { values } = parseArgs({
     think: { type: 'string', default: '400' },
     disconnect: { type: 'string', default: '0.01' },
     board: { type: 'string' },
+    user: { type: 'string', default: process.env.ADMIN_USERNAME },
+    password: { type: 'string', default: process.env.ADMIN_PASSWORD },
   },
 });
+
+if (!values.user || !values.password) {
+  console.error('Identifiants requis : --user et --password (ou ADMIN_USERNAME / ADMIN_PASSWORD).');
+  process.exit(1);
+}
+const headers = { cookie: await login(values.url, values.user, values.password) };
+const httpUrl = values.url.replace(/^ws/, 'http');
 
 const reports: LoadReport[] = [];
 for (const users of values.users.split(',').map(Number)) {
   const boardId = values.board ?? `load-${users}-${Date.now()}`;
   console.log(`→ ${users} utilisateurs, ${values.duration} s, board « ${boardId} »…`);
+  await ensureBoard(httpUrl, headers.cookie, boardId);
   const report = await runLoad({
     url: values.url,
     boardId,
@@ -30,6 +42,7 @@ for (const users of values.users.split(',').map(Number)) {
     thinkMs: Number(values.think),
     disconnectRate: Number(values.disconnect),
     seed: users,
+    headers,
   });
   reports.push(report);
   console.log(`  ${report.converged ? 'convergé' : 'NON CONVERGÉ'} (${report.batches} lots)`);
@@ -57,3 +70,32 @@ console.log(
 );
 
 process.exit(reports.every(({ converged }) => converged) ? 0 : 1);
+
+/** Ouvre une session sur l'API ; retourne le cookie à présenter au WebSocket. */
+async function login(wsUrl: string, identifier: string, password: string): Promise<string> {
+  const url = new URL('/auth/login', wsUrl.replace(/^ws/, 'http'));
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ identifier, password }),
+  });
+  if (!response.ok) {
+    console.error(`Connexion refusée (${response.status}) : ${await response.text()}`);
+    process.exit(1);
+  }
+  const cookie = response.headers.get('set-cookie')?.split(';')[0];
+  if (!cookie) throw new Error('Cookie de session absent');
+  return cookie;
+}
+
+/** Crée le board s'il n'existe pas encore (les boards sont créés par l'API). */
+async function ensureBoard(httpUrl: string, cookie: string, boardId: string): Promise<void> {
+  const existing = await fetch(new URL(`/boards/${boardId}`, httpUrl), { headers: { cookie } });
+  if (existing.ok) return;
+  const created = await fetch(new URL('/boards', httpUrl), {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ id: boardId, name: `Test de charge ${boardId}` }),
+  });
+  if (!created.ok) throw new Error(`Création du board refusée (${created.status})`);
+}

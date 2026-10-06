@@ -1,7 +1,10 @@
 import type { RectangleObject } from '@fleight/protocol';
 import { describe, expect, it } from 'vitest';
+import { stylePatch } from '../editor';
 import { ConnectorTool } from './connector-tool';
+import { EraserTool } from './eraser-tool';
 import { PenTool } from './pen-tool';
+import { PolygonTool } from './polygon-tool';
 import { SelectTool } from './select-tool';
 import { DEFAULT_SHAPE_SIZE, ShapeTool } from './shape-tool';
 import { at, createTestContext } from './test-context';
@@ -29,7 +32,7 @@ describe('SelectTool', () => {
     const tool = new SelectTool();
     tool.down(context, at(10, 10), 'mouse');
     tool.move(context, [at(20, 15), at(40, 30)]);
-    tool.up();
+    tool.up(context);
 
     expect([...selection.ids]).toEqual(['a']);
     expect(document.get('a')).toMatchObject({ x: 30, y: 20 });
@@ -41,10 +44,12 @@ describe('SelectTool', () => {
     selection.set(['a']);
     context.modifiers.shift = true;
     tool.down(context, at(500, 500), 'mouse');
+    tool.up(context);
     expect(selection.size).toBe(1);
 
     context.modifiers.shift = false;
     tool.down(context, at(500, 500), 'mouse');
+    tool.up(context);
     expect(selection.size).toBe(0);
   });
 
@@ -55,12 +60,12 @@ describe('SelectTool', () => {
     ]);
     const tool = new SelectTool();
     tool.down(context, at(10, 10), 'mouse');
-    tool.up();
+    tool.up(context);
     context.modifiers.shift = true;
     tool.down(context, at(210, 10), 'mouse');
     context.modifiers.shift = false;
     tool.move(context, [at(220, 20)]);
-    tool.up();
+    tool.up(context);
 
     expect(selection.size).toBe(2);
     expect(document.get('a')).toMatchObject({ x: 10, y: 10 });
@@ -73,7 +78,7 @@ describe('SelectTool', () => {
     selection.set(['a']);
     tool.down(context, at(100, 50), 'mouse');
     tool.move(context, [at(150, 90)]);
-    tool.up();
+    tool.up(context);
 
     expect(document.get('a')).toMatchObject({ x: 0, y: 0, width: 150, height: 90 });
   });
@@ -82,7 +87,7 @@ describe('SelectTool', () => {
     const { context, calls } = createTestContext([rect('a', 0, 0)]);
     const tool = new SelectTool();
     tool.down(context, at(10, 10), 'touch');
-    tool.up();
+    tool.up(context);
     tool.down(context, at(11, 10), 'touch');
 
     expect(calls.editText).toEqual(['a']);
@@ -101,7 +106,7 @@ describe('SelectTool — verrous', () => {
     const tool = new SelectTool();
     tool.down(context, at(10, 10), 'mouse');
     tool.move(context, [at(60, 60)]);
-    tool.up();
+    tool.up(context);
 
     expect(selection.size).toBe(0);
     expect(document.get('a')).toMatchObject({ x: 0, y: 0 });
@@ -227,5 +232,144 @@ describe('TextTool', () => {
     expect(document.get('new-0')).toMatchObject({ type: 'text', text: '', x: 10 });
     expect(calls.editText).toEqual(['new-0']);
     expect(calls.tools).toEqual(['select']);
+  });
+});
+
+describe('PolygonTool', () => {
+  it('pose un sommet par appui et ferme sur le premier sommet', () => {
+    const { context, document, calls } = createTestContext();
+    const tool = new PolygonTool();
+    for (const [x, y] of [
+      [0, 0],
+      [100, 0],
+      [100, 50],
+    ]) {
+      tool.down(context, at(x ?? 0, y ?? 0));
+      tool.up(context);
+    }
+    expect([...document.all()]).toEqual([]);
+    tool.down(context, at(2, 2));
+
+    expect([...document.all()]).toEqual([
+      expect.objectContaining({
+        type: 'polygon',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 50,
+        points: [0, 0, 1, 0, 1, 1],
+      }),
+    ]);
+    expect(calls.tools).toEqual(['select']);
+  });
+
+  it('ferme aussi par un second appui sur le dernier sommet ; Échap abandonne', () => {
+    const { context, document } = createTestContext();
+    const tool = new PolygonTool();
+    for (const [x, y] of [
+      [0, 0],
+      [50, 100],
+      [100, 0],
+      [100, 0],
+    ]) {
+      tool.down(context, at(x ?? 0, y ?? 0));
+      tool.up(context);
+    }
+    expect(document.size).toBe(1);
+
+    tool.down(context, at(0, 0));
+    tool.down(context, at(50, 50));
+    tool.cancel(context);
+    tool.down(context, at(300, 300));
+    expect(document.size).toBe(1);
+  });
+});
+
+describe('lignes et flèches', () => {
+  it('ne s’accrochent pas aux formes ; la flèche a une pointe, la ligne non', () => {
+    const { context, document } = createTestContext([rect('a', 0, 0)]);
+    for (const name of ['line', 'arrow'] as const) {
+      const tool = new ConnectorTool(name);
+      tool.down(context, at(10, 10), 'mouse');
+      tool.move(context, [at(300, 200)]);
+      tool.up(context);
+    }
+    const created = [...document.all()].filter(({ type }) => type === 'connector');
+    expect(created).toEqual([
+      expect.objectContaining({ start: { kind: 'point', x: 10, y: 10 }, arrowEnd: false }),
+      expect.objectContaining({ start: { kind: 'point', x: 10, y: 10 }, arrowEnd: true }),
+    ]);
+  });
+});
+
+describe('surligneur et gomme', () => {
+  it('le surligneur trace un trait translucide, plus large, sans pression', () => {
+    const { context, document } = createTestContext();
+    const tool = new PenTool('highlighter');
+    tool.down(context, at(0, 0, 1), 'pen');
+    tool.move(context, [at(50, 0, 0.1), at(100, 10, 1)]);
+    tool.up(context);
+    expect([...document.all()][0]).toMatchObject({
+      type: 'stroke',
+      opacity: 0.35,
+      size: 16,
+      simulatePressure: false,
+    });
+  });
+
+  it('la gomme efface les traits touchés, pas les formes ni les traits verrouillés', () => {
+    const stroke = (id: string, y: number) => ({
+      type: 'stroke' as const,
+      id,
+      zIndex: 1,
+      x: 0,
+      y,
+      width: 100,
+      height: 0,
+      points: [0, 0, 0.5, 100, 0, 0.5],
+      color: '#000',
+      size: 4,
+      opacity: 1,
+      simulatePressure: false,
+    });
+    const { context, document } = createTestContext(
+      [rect('forme', 0, 0), stroke('a', 20), stroke('b', 40), stroke('verrouillé', 60)],
+      1,
+      { verrouillé: 'Bob' },
+    );
+    const tool = new EraserTool();
+    tool.down(context, at(50, 0), 'mouse');
+    tool.move(context, [at(50, 80)]);
+    tool.up(context);
+    expect([...document.all()].map(({ id }) => id).sort()).toEqual(['forme', 'verrouillé']);
+  });
+});
+
+describe('stylePatch', () => {
+  it('applique à chaque type d’objet les propriétés qui le concernent', () => {
+    expect(
+      stylePatch(rect('a', 0, 0), { stroke: '#f00', fill: 'transparent', opacity: 0.5 }),
+    ).toEqual({
+      stroke: '#f00',
+      fill: 'transparent',
+      opacity: 0.5,
+    });
+    const text = {
+      type: 'text' as const,
+      id: 't',
+      zIndex: 0,
+      x: 0,
+      y: 0,
+      width: 10,
+      height: 10,
+      text: 'Bonjour',
+      fontSize: 16,
+      color: '#000',
+    };
+    expect(stylePatch(text, { stroke: '#00f', fill: '#fff', fontSize: 32 })).toMatchObject({
+      color: '#00f',
+      fontSize: 32,
+    });
+    expect(stylePatch(text, { fill: '#fff' })).toEqual({});
   });
 });

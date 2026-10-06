@@ -21,6 +21,8 @@ export type LoadOptions = {
   seed?: number;
   /** Délai maximal de convergence après l'activité, en ms. */
   convergenceTimeoutMs?: number;
+  /** En-têtes de la connexion WebSocket (cookie de session). */
+  headers?: Record<string, string>;
 };
 
 export type Percentiles = { count: number; p50: number; p95: number; p99: number; max: number };
@@ -79,6 +81,7 @@ export async function runLoad(options: LoadOptions): Promise<LoadReport> {
     disconnectRate = 0,
     seed = 1,
     convergenceTimeoutMs = 20_000,
+    headers = {},
   } = options;
   const random = createRandom(seed);
   const probe: Probe = { sentAt: new Map(), seqSentAt: new Map(), ack: [], receipts: [] };
@@ -88,7 +91,7 @@ export async function runLoad(options: LoadOptions): Promise<LoadReport> {
   const clients: LoadClient[] = [];
   for (let index = 0; index < users; index++) {
     clients.push(
-      openClient(url, boardId, `load-${index}`, createRandom(random() * 2 ** 32), probe, {
+      openClient(url, headers, boardId, `load-${index}`, createRandom(random() * 2 ** 32), probe, {
         onRejected: (code, count) => {
           rejected[code] = (rejected[code] ?? 0) + count;
         },
@@ -153,7 +156,7 @@ export async function runLoad(options: LoadOptions): Promise<LoadReport> {
   const convergenceMs = Date.now() - activityEnd;
 
   // État du serveur, vu par un nouveau participant.
-  const observer = openClient(url, boardId, 'observateur', random, undefined, {});
+  const observer = openClient(url, headers, boardId, 'observateur', random, undefined, {});
   await waitFor(() => observer.client.status === 'joined', 10_000);
   const server = serialize(observer.client.document.all());
   const divergent = clients.filter(({ client }) => serialize(client.document.all()) !== server);
@@ -195,6 +198,7 @@ export async function runLoad(options: LoadOptions): Promise<LoadReport> {
 
 function openClient(
   url: string,
+  headers: Record<string, string>,
   boardId: string,
   name: string,
   random: () => number,
@@ -214,7 +218,7 @@ function openClient(
 
   const open = () => {
     if (stopped) return;
-    const socket = new WebSocket(url);
+    const socket = new WebSocket(url, { headers });
     socket.on('open', () => {
       if (opened++ > 0) events.onReconnect?.();
       client.connect({

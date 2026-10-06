@@ -1,10 +1,23 @@
 import type { BoardDocument, DocumentOperation, Point } from '@fleight/document';
-import type { BoardObject } from '@fleight/protocol';
+import type { BoardObject, ConnectorRouting } from '@fleight/protocol';
 import type { PointerKind } from '../../input/input-router';
 import type { ViewState } from '../../renderer';
 import type { Selection } from '../selection';
 
-export type ToolName = 'select' | 'rectangle' | 'ellipse' | 'text' | 'connector' | 'pen';
+export type ToolName =
+  | 'select'
+  | 'rectangle'
+  | 'ellipse'
+  | 'polygon'
+  | 'text'
+  | 'connector'
+  | 'line'
+  | 'arrow'
+  | 'pen'
+  | 'highlighter'
+  | 'eraser'
+  | 'frame'
+  | 'lasso';
 
 /** Point d'un geste, en coordonnées monde. */
 export type ToolPoint = Point & { pressure: number; time: number };
@@ -16,6 +29,10 @@ export type ToolStyle = {
   strokeWidth: number;
   /** Épaisseur du stylo, en pixels écran. */
   penSize: number;
+  /** Opacité des objets créés (le surligneur a la sienne). */
+  opacity: number;
+  /** Tracé des connecteurs créés avec l'outil Connecteur (ligne et flèche restent droites). */
+  routing: ConnectorRouting;
 };
 
 /** Participant qui modifie un objet. */

@@ -22,6 +22,41 @@
       "when": 1790927614563,
       "tag": "0002_audit_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790931157555,
+      "tag": "0003_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790938263515,
+      "tag": "0004_boards",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790941657481,
+      "tag": "0005_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790950770135,
+      "tag": "0006_members",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791205730188,
+      "tag": "0007_sessions",
+      "breakpoints": true
     }
   ]
 }

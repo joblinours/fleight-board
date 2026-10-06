@@ -4,30 +4,44 @@ import type { PointerKind } from '../../input/input-router';
 import type { ViewState } from '../../renderer';
 import type { Tool, ToolContext, ToolPoint } from './tool';
 
-/** Dessin libre ; le trait devient un objet `stroke` au levé. */
+/** Surligneur : trait large, translucide et d'épaisseur constante. */
+const HIGHLIGHTER = { sizeFactor: 4, opacity: 0.35 };
+
+/** Dessin libre (stylo ou surligneur) ; le trait devient un objet `stroke` au levé. */
 export class PenTool implements Tool {
-  readonly name = 'pen' as const;
+  readonly name: 'pen' | 'highlighter';
   #builder: StrokeBuilder | undefined;
 
+  constructor(name: 'pen' | 'highlighter' = 'pen') {
+    this.name = name;
+  }
+
   down(context: ToolContext, point: ToolPoint, kind: PointerKind): void {
+    const highlighter = this.name === 'highlighter';
     this.#builder = new StrokeBuilder(
       {
         color: context.style.color,
-        size: context.style.penSize / context.zoom,
-        opacity: 1,
-        simulatePressure: kind !== 'pen',
+        size: (context.style.penSize * (highlighter ? HIGHLIGHTER.sizeFactor : 1)) / context.zoom,
+        opacity: highlighter ? HIGHLIGHTER.opacity : context.style.opacity,
+        simulatePressure: !highlighter && kind !== 'pen',
       },
       0,
       0.5 / context.zoom,
     );
-    this.#builder.add(point.x, point.y, point.pressure);
+    this.#add(point);
     context.invalidate();
   }
 
   move(context: ToolContext, points: readonly ToolPoint[]): void {
     if (!this.#builder) return;
-    for (const point of points) this.#builder.add(point.x, point.y, point.pressure);
+    for (const point of points) this.#add(point);
     context.invalidate();
+  }
+
+  /** Le surligneur ignore la pression : épaisseur constante. */
+  #add(point: ToolPoint): void {
+    const pressure = this.name === 'highlighter' ? 0.5 : point.pressure;
+    this.#builder?.add(point.x, point.y, pressure);
   }
 
   up(context: ToolContext): void {

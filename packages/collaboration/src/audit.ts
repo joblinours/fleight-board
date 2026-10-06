@@ -2,7 +2,7 @@ import type { Intent, Operation } from '@fleight/protocol';
 import type { JournalEntry } from './store';
 
 /** Nature de l'auteur : client anonyme en Phase 0, utilisateur à partir de M1.1. */
-export type AuditActorType = 'client' | 'user' | 'system';
+export type AuditActorType = 'client' | 'user' | 'guest' | 'system';
 
 export type AuditAction = 'object.create' | 'object.update' | 'object.delete';
 
@@ -10,7 +10,7 @@ export type AuditAction = 'object.create' | 'object.update' | 'object.delete';
 export type AuditMetadata = {
   /** Séquence du lot (ou du dernier lot du geste) dans le journal. */
   seq: number;
-  /** Nom affiché de l'auteur, en attendant les comptes (M1.1). */
+  /** Nom affiché de l'auteur au moment de l'action. */
   actorName?: string;
   gestureId?: string;
   /** Annulation ou rétablissement. */
@@ -42,7 +42,7 @@ export function auditEntriesOf(boardId: string, entry: JournalEntry): AuditEntry
   return entry.operations.map((operation) => ({
     boardId,
     actor: entry.actor,
-    actorType: 'client',
+    actorType: entry.actorType ?? 'client',
     action: ACTIONS[operation.kind],
     objectId: operation.kind === 'create' ? operation.object.id : operation.id,
     ...(entry.session ? { session: entry.session } : {}),

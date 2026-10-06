@@ -1,8 +1,21 @@
-import type { AuditAction, AuditActorType, AuditMetadata } from '@fleight/collaboration';
-import type { BoardObject, Operation } from '@fleight/protocol';
+import type { AuditAction, AuditActorType } from '@fleight/collaboration';
+import type {
+  AccountAuditAction,
+  BoardAuditAction,
+  BoardCanvas,
+  BoardObject,
+  BoardVisibility,
+  DefaultRole,
+  GuestRole,
+  ImageMimeType,
+  MemberRole,
+  Operation,
+} from '@fleight/protocol';
 import {
+  type AnyPgColumn,
   bigint,
   bigserial,
+  boolean,
   index,
   integer,
   jsonb,
@@ -10,15 +23,118 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
-export const boards = pgTable('boards', {
-  id: text('id').primaryKey(),
-  /** Séquence du dernier lot appliqué. */
-  seq: bigint('seq', { mode: 'number' }).notNull().default(0),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const boards = pgTable(
+  'boards',
+  {
+    id: text('id').primaryKey(),
+    /** Code court pour rejoindre le board (6 caractères, voir `BOARD_CODE_ALPHABET`). */
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    canvas: jsonb('canvas').$type<BoardCanvas>().notNull().default({ kind: 'infinite' }),
+    /** Propriétaire ; absent si son compte a été supprimé (le board est conservé). */
+    ownerId: text('owner_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
+    /** Masqué de la liste de son propriétaire. */
+    hidden: boolean('hidden').notNull().default(false),
+    /** Session publique (entrée directe) ou privée (demande d'accès). */
+    visibility: text('visibility').$type<BoardVisibility>().notNull().default('public'),
+    /** Rôle des non-membres qui entrent dans une session publique. */
+    defaultRole: text('default_role').$type<DefaultRole>().notNull().default('editor'),
+    /** Invités sans compte admis (par code ou lien). */
+    allowGuests: boolean('allow_guests').notNull().default(false),
+    /** Séquence du dernier lot appliqué. */
+    seq: bigint('seq', { mode: 'number' }).notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('boards_code_idx').on(table.code),
+    index('boards_owner_idx').on(table.ownerId),
+  ],
+);
+
+/** Membres d'un board (le propriétaire n'y figure pas : il est dans `boards.owner_id`). */
+export const boardMembers = pgTable(
+  'board_members',
+  {
+    boardId: text('board_id')
+      .notNull()
+      .references(() => boards.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references((): AnyPgColumn => users.id, { onDelete: 'cascade' }),
+    role: text('role').$type<MemberRole>().notNull(),
+    /** Accès temporaire : fin de validité. */
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    /** Accès valable tant que ce compte est connecté au board. */
+    whileConnected: text('while_connected').references((): AnyPgColumn => users.id, {
+      onDelete: 'cascade',
+    }),
+    /** Qui a attribué le rôle. */
+    grantedBy: text('granted_by').references((): AnyPgColumn => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.boardId, table.userId] }),
+    index('board_members_user_idx').on(table.userId),
+  ],
+);
+
+/**
+ * Invités sans compte : identifiés par un cookie (hash du jeton stocké), limités
+ * à un board. `role` absent : demande d'accès en attente ou refusée.
+ */
+export const guests = pgTable(
+  'guests',
+  {
+    id: text('id').primaryKey(),
+    boardId: text('board_id')
+      .notNull()
+      .references(() => boards.id, { onDelete: 'cascade' }),
+    displayName: text('display_name').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    role: text('role').$type<GuestRole>(),
+    /** Fin de validité de l'invité (cookie), et de son accès. */
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    whileConnected: text('while_connected').references((): AnyPgColumn => users.id, {
+      onDelete: 'cascade',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('guests_token_idx').on(table.tokenHash),
+    index('guests_board_idx').on(table.boardId),
+  ],
+);
+
+export type AccessRequestStatus = 'pending' | 'granted' | 'denied';
+
+/** Demandes d'accès à une session privée (compte ou invité). */
+export const accessRequests = pgTable(
+  'access_requests',
+  {
+    id: text('id').primaryKey(),
+    boardId: text('board_id')
+      .notNull()
+      .references(() => boards.id, { onDelete: 'cascade' }),
+    userId: text('user_id').references((): AnyPgColumn => users.id, { onDelete: 'cascade' }),
+    guestId: text('guest_id').references((): AnyPgColumn => guests.id, { onDelete: 'cascade' }),
+    displayName: text('display_name').notNull(),
+    status: text('status').$type<AccessRequestStatus>().notNull().default('pending'),
+    decidedBy: text('decided_by').references((): AnyPgColumn => users.id, {
+      onDelete: 'set null',
+    }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('access_requests_board_status_idx').on(table.boardId, table.status)],
+);
 
 /** État courant des objets : un board se charge sans rejouer le journal. */
 export const objects = pgTable(
@@ -81,14 +197,104 @@ export const auditLogs = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     actor: text('actor').notNull(),
     actorType: text('actor_type').$type<AuditActorType>().notNull(),
-    action: text('action').$type<AuditAction>().notNull(),
-    boardId: text('board_id').notNull(),
+    action: text('action').$type<AuditAction | AccountAuditAction | BoardAuditAction>().notNull(),
+    /** Absent pour les événements de compte (connexion, administration). */
+    boardId: text('board_id'),
     objectId: text('object_id'),
     sessionId: text('session_id'),
-    metadata: jsonb('metadata').$type<AuditMetadata>().notNull(),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull(),
   },
   (table) => [
     index('audit_logs_board_created_idx').on(table.boardId, table.createdAt),
     index('audit_logs_actor_created_idx').on(table.actor, table.createdAt),
+  ],
+);
+
+export type UserRole = 'admin' | 'user';
+/** `pending` : demande de compte en attente de validation par un Admin. */
+export type UserStatus = 'active' | 'disabled' | 'pending';
+
+export const users = pgTable(
+  'users',
+  {
+    id: text('id').primaryKey(),
+    /** En minuscules ; identifiant de connexion. */
+    username: text('username').notNull(),
+    /** En minuscules ; second identifiant de connexion, facultatif. */
+    email: text('email'),
+    displayName: text('display_name').notNull(),
+    /** Argon2id (format PHC). */
+    passwordHash: text('password_hash').notNull(),
+    role: text('role').$type<UserRole>().notNull().default('user'),
+    status: text('status').$type<UserStatus>().notNull().default('active'),
+    /** Mot de passe temporaire (réinitialisé par un Admin) : à changer à la connexion. */
+    mustChangePassword: boolean('must_change_password').notNull().default(false),
+    /** Protection brute force : échecs consécutifs et blocage temporaire. */
+    failedLogins: integer('failed_logins').notNull().default(0),
+    lockedUntil: timestamp('locked_until', { withTimezone: true }),
+    lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('users_username_idx').on(table.username),
+    uniqueIndex('users_email_idx').on(table.email),
+  ],
+);
+
+/**
+ * Sessions : seul le hash SHA-256 du jeton est stocké. Le jeton est renouvelé
+ * périodiquement ; l'ancien reste accepté quelques secondes (requêtes en vol).
+ */
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+    previousTokenHash: text('previous_token_hash'),
+    previousValidUntil: timestamp('previous_valid_until', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Dernier renouvellement du jeton. */
+    rotatedAt: timestamp('rotated_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Expiration absolue (l'expiration d'inactivité se calcule sur `lastSeenAt`). */
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    userAgent: text('user_agent'),
+    ip: text('ip'),
+  },
+  (table) => [
+    uniqueIndex('sessions_token_idx').on(table.tokenHash),
+    index('sessions_previous_token_idx').on(table.previousTokenHash),
+    index('sessions_user_idx').on(table.userId),
+  ],
+);
+
+/**
+ * Fichiers importés dans un board (images). Le contenu est dans le BlobStorage,
+ * sous son empreinte SHA-256 : deux imports identiques ne sont stockés qu'une fois.
+ */
+export const assets = pgTable(
+  'assets',
+  {
+    id: text('id').primaryKey(),
+    boardId: text('board_id')
+      .notNull()
+      .references(() => boards.id, { onDelete: 'cascade' }),
+    sha256: text('sha256').notNull(),
+    mimeType: text('mime_type').$type<ImageMimeType>().notNull(),
+    size: integer('size').notNull(),
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    uploadedBy: text('uploaded_by').references((): AnyPgColumn => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('assets_board_idx').on(table.boardId),
+    index('assets_sha_idx').on(table.sha256),
   ],
 );

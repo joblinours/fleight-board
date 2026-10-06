@@ -1,7 +1,10 @@
+import { atLeast, can } from '@fleight/permissions';
 import {
+  type BoardRole,
   type ClientSessionMessage,
   ClientSessionMessageSchema,
   type Operation,
+  PARTICIPANT_COLORS,
   type Participant,
   type ServerSessionMessage,
 } from '@fleight/protocol';
@@ -18,7 +21,11 @@ import {
 } from './store';
 
 /** Message diffusé aux connexions d'un board ; `exclude` ne le reçoit pas. */
-type Broadcast = { payload: ServerSessionMessage; exclude?: string };
+/**
+ * Message diffusé aux connexions d'un board ; `exclude` ne le reçoit pas, et
+ * seules les connexions d'au moins `minRole` le reçoivent.
+ */
+type Broadcast = { payload: ServerSessionMessage; exclude?: string; minRole?: BoardRole };
 
 export type HubConnection = {
   /** Message de session déjà décodé (JSON) reçu de la connexion. */
@@ -43,11 +50,34 @@ type LoadedRoom = {
    * qu'un enregistrement est en cours partent ensemble, en une transaction.
    */
   nextGroup: CommitGroup | undefined;
-  /** Le stockage a échoué : le board doit être rechargé. */
+  /** Le stockage a échoué ou le board a été supprimé : il doit être rechargé. */
   broken: boolean;
+  /** Le board n'existe pas dans le stockage. */
+  missing: boolean;
 };
 
+/**
+ * Raison pour laquelle le serveur ferme une connexion : échec d'enregistrement
+ * (le client se reconnecte), board inexistant ou supprimé (inutile de revenir).
+ */
+export type DisconnectReason = 'storage' | 'board-not-found' | 'board-deleted' | 'forbidden';
+
+/** Utilisateur authentifié d'une connexion (compte, ou invité sans compte). */
+export type HubUser = { id: string; name: string; guest?: boolean };
+
+/**
+ * Rôle d'un utilisateur sur un board ; `undefined` : aucun accès.
+ * Sans authentification (`user` absent), la décision revient aussi à cette fonction.
+ */
+export type Authorize = (
+  boardId: string,
+  user: HubUser | undefined,
+) => Promise<BoardRole | undefined> | BoardRole | undefined;
+
 type CommitGroup = Array<{ commit: BoardCommit; then: (() => void) | undefined }>;
+
+/** Intervalle minimal entre deux curseurs relayés pour une connexion. */
+const CURSOR_INTERVAL_MS = 20;
 
 /** Geste en cours d'une connexion : ses opérations sont journalisées en une fois. */
 type OpenGesture = { id: string; operations: Operation[]; seq: number };
@@ -67,8 +97,21 @@ export class CollaborationHub {
   readonly #pubsub: PubSub<Broadcast>;
   readonly #store: BoardStore;
   readonly #log: HubLogger | undefined;
-  readonly #disconnects = new Map<string, () => void>();
+  readonly #disconnects = new Map<string, (reason: DisconnectReason) => void>();
+  /** Réévaluation du rôle de chaque connexion (membres modifiés). */
+  readonly #refreshers = new Map<
+    string,
+    { boardId: () => string | undefined; refresh: () => Promise<void> }
+  >();
+  /**
+   * Rôle de chaque connexion sur le board qu'elle rejoint (permissions). Sans
+   * cette fonction, tout participant est Editor. Modifiable après la construction
+   * (l'application la branche sur ses whiteboards).
+   */
+  authorize: Authorize | undefined;
+  readonly #requireExistingBoards: boolean;
   readonly #lockOptions: { ttlMs?: number; now?: () => number };
+  readonly #now: () => number;
 
   constructor(
     options: {
@@ -79,11 +122,24 @@ export class CollaborationHub {
       lockTtlMs?: number;
       /** Horloge, injectable pour les tests. */
       now?: () => number;
+      /**
+       * Refuse de rejoindre un board absent du stockage (créé par l'API) ; sinon
+       * il est créé à la première modification (tests, développement sans base).
+       */
+      requireExistingBoards?: boolean;
+      /**
+       * Rôle de chaque connexion sur le board qu'elle rejoint (permissions).
+       * Sans cette fonction, tout participant est Editor.
+       */
+      authorize?: Authorize;
     } = {},
   ) {
+    this.authorize = options.authorize;
+    this.#requireExistingBoards = options.requireExistingBoards ?? false;
     this.#pubsub = options.pubsub ?? new InMemoryPubSub<Broadcast>();
     this.#store = options.store ?? new MemoryBoardStore();
     this.#log = options.log;
+    this.#now = options.now ?? Date.now;
     this.#lockOptions = {
       ...(options.lockTtlMs !== undefined ? { ttlMs: options.lockTtlMs } : {}),
       ...(options.now ? { now: options.now } : {}),
@@ -100,6 +156,64 @@ export class CollaborationHub {
       const expired = loaded.locks.expire();
       if (expired.length) this.#broadcastLocks(boardId, loaded, {}, expired);
     }
+  }
+
+  /**
+   * Board supprimé : il est déchargé, ses enregistrements en attente abandonnés,
+   * et ses participants déconnectés.
+   */
+  evict(boardId: string): void {
+    const loaded = this.#loaded.get(boardId);
+    if (!loaded) return;
+    loaded.broken = true;
+    this.#unload(boardId, loaded);
+    for (const connectionId of loaded.participants.keys()) {
+      this.#disconnects.get(connectionId)?.('board-deleted');
+    }
+  }
+
+  /**
+   * Les membres d'un board ont changé : le rôle de chaque connexion est réévalué.
+   * Un participant qui perd l'accès est déconnecté ; les autres voient son nouveau rôle.
+   */
+  async refreshAccess(boardId: string): Promise<void> {
+    const refreshes = [...this.#refreshers.values()]
+      .filter((entry) => entry.boardId() === boardId)
+      .map((entry) => entry.refresh());
+    await Promise.all(refreshes);
+  }
+
+  /**
+   * Session privée : sans accès, une connexion dont l'accès est demandé attend la
+   * décision au lieu d'être refusée (`true` : une demande est en attente).
+   */
+  awaitsAccess: ((boardId: string, user: HubUser | undefined) => Promise<boolean>) | undefined;
+
+  /** Un participant authentifié (compte) a quitté un board. */
+  onLeave: ((boardId: string, userId: string) => void) | undefined;
+
+  /** Le compte est connecté au board (accès « tant qu'il est connecté »). */
+  isConnected(boardId: string, userId: string): boolean {
+    const loaded = this.#loaded.get(boardId);
+    if (!loaded) return false;
+    for (const participant of loaded.participants.values()) {
+      if (participant.userId === userId) return true;
+    }
+    return false;
+  }
+
+  /** Prévient les Co-owners et le propriétaire connectés que les demandes d'accès ont changé. */
+  notifyAccessRequests(boardId: string, pending: number): void {
+    if (!this.#loaded.has(boardId)) return;
+    void this.#pubsub.publish(channel(boardId), {
+      payload: { type: 'ACCESS_REQUESTED', pending },
+      minRole: 'co-owner',
+    });
+  }
+
+  /** Réévalue les droits de toutes les sessions (accès temporaires expirés). */
+  async refreshAllAccess(): Promise<void> {
+    await Promise.all([...this.#loaded.keys()].map((boardId) => this.refreshAccess(boardId)));
   }
 
   /** Nombre de boards chargés en mémoire. */
@@ -125,15 +239,28 @@ export class CollaborationHub {
   open(
     connectionId: string,
     send: (message: ServerSessionMessage) => void,
-    disconnect?: () => void,
+    disconnect?: (reason: DisconnectReason) => void,
+    /** Utilisateur authentifié : auteur journalisé et nom affiché aux autres participants. */
+    user?: HubUser,
   ): HubConnection {
     let joined:
       | { boardId: string; loaded: LoadedRoom; unsubscribe: Unsubscribe; clientId: string }
       | undefined;
     let gesture: OpenGesture | undefined;
-    /** Auteur journalisé : le client (stable à travers les reconnexions). */
-    let actor = connectionId;
-    let actorName: string | undefined;
+    /** Rôle sur le board rejoint. */
+    let role: BoardRole = 'editor';
+    /** Dernier curseur relayé (limitation du débit). */
+    let lastCursorAt = Number.NEGATIVE_INFINITY;
+    /** Auteur journalisé : l'utilisateur, à défaut le client (stable à travers les reconnexions). */
+    let actor = user?.id ?? connectionId;
+    let actorName: string | undefined = user?.name;
+    const actorType = user
+      ? user.guest
+        ? ('guest' as const)
+        : ('user' as const)
+      : ('client' as const);
+    /** Session privée : JOIN en attente de la décision sur la demande d'accès. */
+    let waiting: Extract<ClientSessionMessage, { type: 'JOIN' }> | undefined;
     // Les messages d'une connexion sont traités l'un après l'autre (le JOIN est asynchrone).
     let queue = Promise.resolve();
     if (disconnect) this.#disconnects.set(connectionId, disconnect);
@@ -145,6 +272,7 @@ export class CollaborationHub {
         seq: gesture.seq,
         actor,
         session: connectionId,
+        actorType,
         ...(actorName ? { actorName } : {}),
         gestureId: gesture.id,
         operations: compactOperations(gesture.operations),
@@ -170,39 +298,81 @@ export class CollaborationHub {
         exclude: connectionId,
       });
       this.#evictIfEmpty(boardId, loaded);
+      if (user && !user.guest) this.onLeave?.(boardId, user.id);
+    };
+
+    /** Rejoint un board : rôle vérifié, salle d'attente d'une session privée. */
+    const join = async (message: Extract<ClientSessionMessage, { type: 'JOIN' }>) => {
+      leave();
+      waiting = undefined;
+      const loaded = await this.#join(message.boardId);
+      if (loaded.missing && this.#requireExistingBoards) {
+        this.#evictIfEmpty(message.boardId, loaded);
+        disconnect?.('board-not-found');
+        return;
+      }
+      const granted = this.authorize
+        ? await this.authorize(message.boardId, user)
+        : ('editor' as const);
+      if (!granted || !can(granted, 'board.view')) {
+        this.#evictIfEmpty(message.boardId, loaded);
+        if (await this.awaitsAccess?.(message.boardId, user)) {
+          // Demande d'accès en attente : la connexion attend la décision (refreshAccess).
+          waiting = message;
+          send({ type: 'ACCESS_PENDING' });
+          return;
+        }
+        disconnect?.('forbidden');
+        return;
+      }
+      role = granted;
+      const used = new Set([...loaded.participants.values()].map(({ color }) => color));
+      const participant: Participant = {
+        connectionId,
+        name: user?.name ?? message.name,
+        ...(user && !user.guest ? { userId: user.id } : {}),
+        ...(user?.guest ? { guest: true } : {}),
+        color: pickColor(user?.id ?? message.clientId, used),
+        mode: message.mode ?? 'cursor',
+        role,
+      };
+      loaded.participants.set(connectionId, participant);
+      const unsubscribe = this.#pubsub.subscribe(
+        channel(message.boardId),
+        ({ payload, exclude, minRole }) => {
+          if (exclude === connectionId) return;
+          if (minRole && !atLeast(role, minRole)) return;
+          send(payload);
+        },
+      );
+      joined = { boardId: message.boardId, loaded, unsubscribe, clientId: message.clientId };
+      // Sans compte, le client (stable à travers les reconnexions) tient lieu d'auteur.
+      if (!user) {
+        actor = message.clientId;
+        actorName = message.name;
+      }
+      send({
+        type: 'JOINED',
+        self: connectionId,
+        role,
+        snapshot: loaded.room.snapshot(),
+        participants: [...loaded.participants.values()],
+        locks: loaded.locks.snapshot(),
+        applied: loaded.room.appliedBatchesOf(message.clientId),
+      });
+      void this.#pubsub.publish(channel(message.boardId), {
+        payload: { type: 'PARTICIPANT_JOINED', participant },
+        exclude: connectionId,
+      });
     };
 
     const handle = async (message: ClientSessionMessage) => {
       switch (message.type) {
-        case 'JOIN': {
-          leave();
-          const loaded = await this.#join(message.boardId);
-          const participant = { connectionId, name: message.name };
-          loaded.participants.set(connectionId, participant);
-          const unsubscribe = this.#pubsub.subscribe(
-            channel(message.boardId),
-            ({ payload, exclude }) => {
-              if (exclude !== connectionId) send(payload);
-            },
-          );
-          joined = { boardId: message.boardId, loaded, unsubscribe, clientId: message.clientId };
-          actor = message.clientId;
-          actorName = message.name;
-          send({
-            type: 'JOINED',
-            self: connectionId,
-            snapshot: loaded.room.snapshot(),
-            participants: [...loaded.participants.values()],
-            locks: loaded.locks.snapshot(),
-            applied: loaded.room.appliedBatchesOf(message.clientId),
-          });
-          void this.#pubsub.publish(channel(message.boardId), {
-            payload: { type: 'PARTICIPANT_JOINED', participant },
-            exclude: connectionId,
-          });
+        case 'JOIN':
+          await join(message);
           break;
-        }
         case 'LEAVE':
+          waiting = undefined;
           leave();
           break;
         case 'GESTURE_END': {
@@ -217,7 +387,7 @@ export class CollaborationHub {
           break;
         }
         case 'LOCK': {
-          if (!joined) return;
+          if (!joined || !can(role, 'board.edit')) return;
           const { boardId, loaded } = joined;
           // Seuls les objets existants se verrouillent.
           const objectIds = message.objectIds.filter((id) => loaded.room.document.has(id));
@@ -241,6 +411,33 @@ export class CollaborationHub {
         case 'SYNC_REQUEST':
           if (joined) send({ type: 'SNAPSHOT', snapshot: joined.loaded.room.snapshot() });
           break;
+        case 'CURSOR': {
+          if (!joined) return;
+          const participant = joined.loaded.participants.get(connectionId);
+          // « Drawing only » : le curseur n'est pas partagé.
+          if (participant?.mode !== 'cursor') return;
+          const now = this.#now();
+          // Un curseur qui quitte le board passe toujours ; les autres sont limités.
+          if (message.position && now - lastCursorAt < CURSOR_INTERVAL_MS) return;
+          lastCursorAt = now;
+          void this.#pubsub.publish(channel(joined.boardId), {
+            payload: { type: 'CURSOR', connectionId, position: message.position },
+            exclude: connectionId,
+          });
+          break;
+        }
+        case 'PRESENCE_MODE': {
+          if (!joined) return;
+          const current = joined.loaded.participants.get(connectionId);
+          if (!current || current.mode === message.mode) return;
+          const participant = { ...current, mode: message.mode };
+          joined.loaded.participants.set(connectionId, participant);
+          // Tous les participants (le demandeur compris) voient le nouveau mode.
+          void this.#pubsub.publish(channel(joined.boardId), {
+            payload: { type: 'PARTICIPANT_UPDATED', participant },
+          });
+          break;
+        }
         case 'OPS': {
           if (!joined) {
             send({
@@ -252,6 +449,15 @@ export class CollaborationHub {
             return;
           }
           const { boardId, loaded, clientId } = joined;
+          if (!can(role, 'board.edit')) {
+            send({
+              type: 'REJECT',
+              batchId: message.batchId,
+              code: 'FORBIDDEN',
+              message: 'Votre rôle ne permet pas de modifier ce board',
+            });
+            return;
+          }
           // Un objet verrouillé par un autre participant n'est pas modifiable.
           const touched = touchedIds(message.operations);
           const holder = [...touched]
@@ -306,6 +512,7 @@ export class CollaborationHub {
               seq: result.seq,
               actor,
               session: connectionId,
+              actorType,
               ...(actorName ? { actorName } : {}),
               operations: message.operations,
               ...(message.intent ? { intent: message.intent } : {}),
@@ -343,6 +550,53 @@ export class CollaborationHub {
       }
     };
 
+    /** Réévalue le rôle (membres modifiés) ; sans accès, la connexion est fermée. */
+    const refresh = async () => {
+      // En salle d'attente : la décision est peut-être prise.
+      if (waiting && !joined) {
+        await join(waiting);
+        return;
+      }
+      if (!joined || !this.authorize) return;
+      const { boardId } = joined;
+      const granted = await this.authorize(boardId, user);
+      // La connexion a pu quitter le board pendant la vérification.
+      if (!joined || joined.boardId !== boardId) return;
+      if (!granted || !can(granted, 'board.view')) {
+        leave();
+        disconnect?.('forbidden');
+        return;
+      }
+      if (granted === role) return;
+      role = granted;
+      const { loaded } = joined;
+      // Qui ne peut plus modifier rend ses verrous.
+      if (!can(role, 'board.edit')) {
+        const released = loaded.locks.releaseAll(connectionId);
+        if (released.length) this.#broadcastLocks(boardId, loaded, {}, released);
+      }
+      const current = loaded.participants.get(connectionId);
+      if (!current) return;
+      const participant = { ...current, role };
+      loaded.participants.set(connectionId, participant);
+      void this.#pubsub.publish(channel(boardId), {
+        payload: { type: 'PARTICIPANT_UPDATED', participant },
+      });
+    };
+    this.#refreshers.set(connectionId, {
+      boardId: () => joined?.boardId ?? waiting?.boardId,
+      refresh: () => {
+        // Dans la file de la connexion : après un JOIN en cours.
+        queue = queue.then(refresh).catch((error: unknown) => {
+          this.#log?.error(
+            { connectionId, error: String(error) },
+            'échec de la vérification des droits',
+          );
+        });
+        return queue;
+      },
+    });
+
     return {
       receive: (data) => {
         const parsed = ClientSessionMessageSchema.safeParse(data);
@@ -358,11 +612,12 @@ export class CollaborationHub {
           .then(() => handle(parsed.data))
           .catch((error: unknown) => {
             this.#log?.error({ connectionId, error: String(error) }, 'échec du traitement');
-            disconnect?.();
+            disconnect?.('storage');
           });
       },
       close: () => {
         this.#disconnects.delete(connectionId);
+        this.#refreshers.delete(connectionId);
         queue = queue.then(leave);
       },
     };
@@ -392,6 +647,7 @@ export class CollaborationHub {
           persistence: Promise.resolve(),
           nextGroup: undefined,
           broken: false,
+          missing: stored === undefined,
         };
         if (this.#rooms.get(boardId) === promise) this.#loaded.set(boardId, loaded);
         return loaded;
@@ -461,7 +717,9 @@ export class CollaborationHub {
     loaded.broken = true;
     this.#log?.error({ boardId, error: String(error) }, 'échec de l’enregistrement du board');
     this.#unload(boardId, loaded);
-    for (const connectionId of loaded.participants.keys()) this.#disconnects.get(connectionId)?.();
+    for (const connectionId of loaded.participants.keys()) {
+      this.#disconnects.get(connectionId)?.('storage');
+    }
   }
 
   /** Décharge un board sans participant une fois ses enregistrements terminés. */
@@ -482,4 +740,19 @@ export class CollaborationHub {
 
 function channel(boardId: string): string {
   return `board:${boardId}`;
+}
+
+/**
+ * Couleur d'un participant : une couleur libre du board, choisie à partir de
+ * l'utilisateur pour rester la même d'une session à l'autre quand c'est possible.
+ */
+export function pickColor(seed: string, used: ReadonlySet<string>): string {
+  let hash = 0;
+  for (const char of seed) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  const count = PARTICIPANT_COLORS.length;
+  for (let i = 0; i < count; i++) {
+    const color = PARTICIPANT_COLORS[(hash + i) % count] as string;
+    if (!used.has(color)) return color;
+  }
+  return PARTICIPANT_COLORS[hash % count] as string;
 }

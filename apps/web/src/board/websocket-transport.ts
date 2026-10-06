@@ -6,6 +6,15 @@ export function websocketUrl(): string {
   return `${protocol}//${window.location.host}/ws`;
 }
 
+/** Fermetures définitives : session révoquée, board inexistant, board supprimé. */
+export const CloseCodes = {
+  Revoked: 4401,
+  Forbidden: 4403,
+  BoardNotFound: 4404,
+  BoardDeleted: 4410,
+} as const;
+const FINAL_CLOSE_CODES = new Set<number>(Object.values(CloseCodes));
+
 /** Délais de reconnexion successifs (ms) ; le dernier est répété. */
 const RECONNECT_DELAYS = [500, 1000, 2000, 4000, 8000];
 
@@ -14,7 +23,15 @@ const RECONNECT_DELAYS = [500, 1000, 2000, 4000, 8000];
  * (délai croissant, et immédiatement au retour du réseau).
  * Retourne la fonction de fermeture définitive.
  */
-export function connectWebSocket(client: CollaborationClient, url = websocketUrl()): () => void {
+export function connectWebSocket(
+  client: CollaborationClient,
+  url = websocketUrl(),
+  /**
+   * Appelé à chaque fermeture, avec le code reçu. Pour un board inexistant ou
+   * supprimé, ou une session révoquée, il n'y a pas de reconnexion.
+   */
+  onClose?: (code: number) => void,
+): () => void {
   let socket: WebSocket | undefined;
   let attempt = 0;
   let timer: number | undefined;
@@ -38,11 +55,16 @@ export function connectWebSocket(client: CollaborationClient, url = websocketUrl
     current.addEventListener('message', (event) => {
       if (typeof event.data === 'string') client.handleMessage(event.data);
     });
-    current.addEventListener('close', () => {
+    current.addEventListener('close', (event) => {
       if (socket !== current) return;
       socket = undefined;
       client.handleClose();
       if (stopped) return;
+      onClose?.(event.code);
+      if (FINAL_CLOSE_CODES.has(event.code)) {
+        stopped = true;
+        return;
+      }
       const delay = RECONNECT_DELAYS[Math.min(attempt, RECONNECT_DELAYS.length - 1)] ?? 8000;
       attempt += 1;
       timer = window.setTimeout(open, delay);
@@ -68,19 +90,4 @@ export function connectWebSocket(client: CollaborationClient, url = websocketUrl
     window.removeEventListener('offline', onOffline);
     socket?.close();
   };
-}
-
-const NAME_KEY = 'fleight.displayName';
-
-/** Nom affiché mémorisé localement (en attendant l'authentification). */
-export function displayName(): string {
-  try {
-    const saved = window.localStorage.getItem(NAME_KEY);
-    if (saved) return saved;
-    const generated = `Invité ${Math.floor(1000 + Math.random() * 9000)}`;
-    window.localStorage.setItem(NAME_KEY, generated);
-    return generated;
-  } catch {
-    return `Invité ${Math.floor(1000 + Math.random() * 9000)}`;
-  }
 }

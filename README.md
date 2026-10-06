@@ -2,12 +2,13 @@
 
 > Whiteboard collaboratif temps réel, self-hosted, Docker-first, extensible par plugins et conçu dès le départ pour desktop, tablette et Apple Pencil.
 
-![Statut](https://img.shields.io/badge/statut-d%C3%A9veloppement-orange)
-![Phase](https://img.shields.io/badge/phase-1%20%E2%80%94%20Core%20MVP-blue)
+![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Statut](https://img.shields.io/badge/statut-MVP-orange)
+![Phase](https://img.shields.io/badge/phase-2%20%E2%80%94%20Produit%20utilisable-blue)
 ![Licence](https://img.shields.io/badge/licence-C8CL%20%2B%20commerciale-lightgrey)
 
 > [!WARNING]
-> **Projet en développement.** La preuve de concept (Phase 0) est terminée ; aucune version utilisable en production n'est encore disponible. Ce README décrit la cible du produit et sera mis à jour au fil de la réalisation. Les éléments marqués _(prévu)_ ne sont pas encore implémentés.
+> **Première version : `v0.1.0` (Core MVP).** Elle est utilisable et déployable avec Docker ([guide](docs/deployment.md)) : comptes, whiteboards collaboratifs, permissions, sessions publiques et privées, invités, audit, interface tablette. Ce README décrit aussi la cible du produit ; les éléments marqués _(prévu)_ ne sont pas encore implémentés. Nouveautés : [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -53,13 +54,14 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 
 | Fonctionnalité | Statut |
 |---|---|
-| Canvas standard (A4, A3, A2, 16:9, 4:3, personnalisé) | _(prévu)_ |
+| Whiteboards : création (nom, description, format), liste, renommage, masquage, suppression | 🧪 Implémenté (M1.2) |
+| Canvas standard (A4, A3, A2, 16:9, 4:3, personnalisé) | 🧪 Page de taille fixe, portrait ou paysage (M1.2) |
 | Canvas infini (zoom, pan) | 🧪 Moteur de rendu prototypé (M0.2) |
-| Primitives : rectangle, ellipse, ligne, flèche, polygone, texte, image | 🧪 Rectangle, ellipse et texte prototypés (M0.4) |
-| Dessin libre : stylo, surligneur, gomme, couleur, épaisseur, opacité | 🧪 Stylo à pression prototypé (M0.3) |
-| Sélection, groupes, copier/coller, duplication | 🧪 Sélection, déplacement, redimensionnement prototypés (M0.4) |
-| Frames (conteneurs titrés, exportables) | _(prévu)_ |
-| Connecteurs droits/orthogonaux, ancrages, labels, suivi des objets | 🧪 Connecteurs droits ancrés qui suivent les objets (M0.4) |
+| Primitives : rectangle, ellipse, ligne, flèche, polygone, texte, image | 🧪 Implémentées (M1.3) ; images PNG, JPEG, GIF, WebP importées par bouton, glisser-déposer ou collage |
+| Dessin libre : stylo, surligneur, gomme, couleur, épaisseur, opacité | 🧪 Implémenté (M1.3) ; panneau de propriétés pour la sélection et les prochains objets |
+| Sélection, groupes, copier/coller, duplication | 🧪 Implémenté (M1.4) : rectangle de sélection, lasso, groupes, premier/arrière-plan ; copier/coller via le presse-papiers système, donc aussi d'un board à l'autre |
+| Frames (conteneurs titrés, exportables) | 🧪 Titre, fond, déplacement avec leur contenu (M1.4) ; export prévu |
+| Connecteurs droits/orthogonaux, ancrages, labels, suivi des objets | 🧪 Implémenté (M1.5) : tracé orthogonal à routage simple (sans contournement d'obstacles), pointes de flèche, labels, reconnexion par glisser |
 | Métadonnées structurées sur les objets | _(prévu)_ |
 
 ### Collaboration
@@ -68,9 +70,9 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 |---|---|
 | Synchronisation temps réel via WebSocket | 🧪 Prototypée (M0.5), persistée dans PostgreSQL (M0.6) |
 | Verrouillage temporaire des objets en cours d'édition | 🧪 Prototypé (M0.7) |
-| Curseurs et présence (modes « Drawing only » / « Cursor visible ») | _(prévu)_ |
+| Curseurs et présence (modes « Drawing only » / « Cursor visible ») | 🧪 Implémenté (M1.6) : curseurs nommés à la couleur du participant, liste des participants, mode choisi par chacun et mémorisé |
 | Undo/redo individuel (chacun n'annule que ses propres actions) | 🧪 Prototypé (M0.8) |
-| Audit log complet et non annulable | 🧪 Prototypé (M0.10) : une entrée par opération finale, annulations comprises |
+| Audit log complet et non annulable | 🧪 Implémenté (M0.10, M1.9) : une entrée par opération finale (annulations comprises) et par événement de gestion ; page d'audit filtrable, paginée et exportable (CSV), audit global pour l'Admin |
 | Travail local temporaire pendant une coupure réseau, puis resynchronisation | 🧪 Prototypé (M0.9) |
 | Mode présentation (navigation, zoom et focus synchronisés) | _(prévu)_ |
 
@@ -78,8 +80,9 @@ Le tout est déployable en self-hosted avec une seule commande : `docker compose
 
 | Fonctionnalité | Statut |
 |---|---|
-| Authentification locale + MFA TOTP | _(prévu)_ |
-| Gestion des comptes Users / Admins | _(prévu)_ |
+| Authentification locale (Argon2id, sessions, anti brute force) | 🧪 Implémentée (M1.1) ; MFA TOTP _(prévu)_ |
+| Gestion des comptes Users / Admins, demandes de compte | 🧪 Implémentée (M1.1) |
+| Interface web (tableau de bord, administration, thème clair/sombre) | 🧪 Implémentée (M1.9.5) : design system maison, barre latérale, menus et modales |
 | Politique de rétention (corbeille) | _(prévu)_ |
 | Limites de fichiers et de stockage | _(prévu)_ |
 | Gestion des plugins (ZIP, marketplace) | _(prévu)_ |
@@ -94,7 +97,12 @@ L'iPad avec Apple Pencil est une **cible de premier rang**, pas une adaptation :
 - palm rejection, modes Pencil-only et Touch-only ;
 - zoom et pan multi-touch ;
 - rendu local immédiat, indépendant de la qualité réseau ;
-- interface dont les panneaux secondaires peuvent être masqués.
+- interface tactile (M1.11) :
+  - barre d'outils compacte, où chaque famille d'outils se déplie ;
+  - cibles de 44 px ;
+  - panneau de propriétés repliable, et mode « interface masquée » ;
+  - disposition portrait et paysage ;
+- clavier externe : raccourcis avec ⌘, flèches pour déplacer, zoom au clavier, `?` pour l'aide.
 
 ## Principes
 
@@ -194,17 +202,28 @@ Viewer < Editor < Presenter < Co-owner < Owner
 - Les rôles sont cumulatifs : un Presenter peut aussi éditer.
 - Seul l'**Owner** peut supprimer le whiteboard et en transférer la propriété ; le **Co-owner** gère tout le reste (membres, partage, permissions).
 - On ne peut déléguer qu'un rôle au plus égal au sien.
-- Un Admin global qui crée un whiteboard y agit comme un User ; le rôle maximal qu'il peut déléguer est **Co-owner**.
+- Un Admin global qui crée un whiteboard y agit comme un User ; le rôle maximal qu'il peut déléguer est **Co-owner**. Il n'a aucun droit implicite sur les boards des autres (seule la lecture de l'audit lui reste ouverte).
+- Accès des non-membres qui connaissent le lien ou le code : voir [Partage](#partage). Un rôle de membre l'emporte toujours, même s'il est plus faible.
+- Le serveur vérifie le rôle sur chaque requête REST et chaque message WebSocket ; un changement de rôle s'applique en direct aux sessions ouvertes, un membre qui perd l'accès est déconnecté.
+
+| Action | Rôle minimal |
+|---|---|
+| Voir le board, les participants, partager son curseur | Viewer |
+| Créer, modifier, supprimer des objets ; importer des images | Editor |
+| Présenter (Phase 2) | Presenter |
+| Renommer, masquer, régler l'accès ; gérer les membres ; lire l'audit | Co-owner |
+| Supprimer le board, transférer la propriété | Owner |
 
 ### Accès temporaires
 
-Un membre peut recevoir un accès **permanent**, **temporaire** (durée définie) ou **valable tant que le détenteur est connecté**.
+Un membre (ou un invité) peut recevoir un accès **permanent**, **temporaire** (1 heure à 30 jours) ou **valable tant que la personne qui l'a accordé est connectée au board**. À l'expiration (vérifiée toutes les 30 s) ou au départ de cette personne, la session est fermée.
 
 ## Partage
 
-- **Code court** de 6 caractères (ex. `K7P4X2`), sans caractères ambigus (`O/0`, `I/1`, `S/5`). C'est un identifiant, pas un secret : il est protégé par du rate limiting et de la détection d'abus.
-- **Session publique** : toute personne connaissant le code peut rejoindre.
-- **Session privée** : chaque demande de connexion doit être acceptée.
+- **Code court** de 6 caractères (ex. `K7P4X2`), sans caractères ambigus (`O/0`, `I/1`, `S/5`). C'est un identifiant, pas un secret : rate limiting par adresse, et **cooldown** de 5 minutes après 10 codes inexistants en 10 minutes. Lien de partage : `#/join/CODE`.
+- **Session publique** : toute personne connaissant le code entre directement, avec le rôle par défaut du board (Editor ou Viewer).
+- **Session privée** : chaque demande d'accès doit être acceptée (rôle et durée) ou refusée par le propriétaire ou un Co-owner, prévenus en temps réel ; le demandeur attend dans une salle d'attente et entre dès l'acceptation.
+- **Invités** (si le board les accepte) : sans compte, avec un simple nom, par le code ou le lien. Un invité est Viewer ou Editor, limité à ce board, pour 24 heures au plus ; il ne gère rien et n'importe pas d'images.
 - **Share links** Viewer ou Editor, à jetons aléatoires longs, révocables et éventuellement temporaires.
 
 ## Plugins
@@ -231,27 +250,37 @@ fleight-board/
 │   ├── canvas/           # Moteur de rendu et d'entrée (caméra, rendu, Pointer Events)
 │   ├── collaboration/    # Sessions (serveur), client optimiste, pub/sub
 │   ├── document/         # État du board, opérations et géométrie (client et serveur)
+│   ├── permissions/      # Rôles de whiteboard, matrice rôle → actions, règles de délégation
 │   ├── protocol/         # Schémas zod (objets, messages) versionnés
 │   └── shared/           # Utilitaires communs (identifiants ULID…)
 ├── infrastructure/
 │   └── compose/          # docker-compose de développement
-└── docs/                 # Plan d'implémentation, rapports
+├── scripts/              # dev.sh, backup.sh, restore.sh
+├── docs/                 # Plan d'implémentation, déploiement, rapports
+├── Dockerfile            # Image de production (l'API sert aussi le frontend)
+└── docker-compose.yml    # Déploiement : application + PostgreSQL
 ```
 
-À venir : `packages/permissions`, `packages/plugin-sdk`, `plugins/network`, `infrastructure/docker` (images de production), `tests/` (collaboration et e2e).
+À venir : `packages/plugin-sdk`, `plugins/network`, `tests/` (collaboration et e2e).
 
 ## Installation
-
-_(prévu — disponible à partir de la première version déployable)_
 
 ```bash
 git clone https://github.com/joblinours/fleight-board.git
 cd fleight-board
-cp .env.example .env    # adapter la configuration
+cp .env.example .env    # POSTGRES_PASSWORD et premier Admin (ADMIN_USERNAME / ADMIN_PASSWORD)
 docker compose up -d
 ```
 
-Seront documentés : variables d'environnement, volumes, healthchecks (`/health`, `/ready`, `/metrics`), sauvegarde/restauration et procédure de mise à jour.
+L'application répond sur `http://<serveur>:8080`. Une seule image (`ghcr.io/joblinours/fleight-board`) sert l'interface, l'API et le WebSocket ; les migrations de la base s'appliquent au démarrage.
+
+Le guide [docs/deployment.md](docs/deployment.md) couvre :
+- l'installation avec **Portainer** ;
+- HTTPS derrière un reverse proxy ;
+- les variables et les volumes ;
+- les logs JSON et les healthchecks (`/health`, `/ready`) ;
+- la **sauvegarde et la restauration** (`scripts/backup.sh`, `scripts/restore.sh`) ;
+- la **mise à jour**.
 
 ## Développement
 
@@ -270,8 +299,8 @@ Seront documentés : variables d'environnement, volumes, healthchecks (`/health`
 Le script s'occupe de tout :
 - il installe les dépendances si besoin ;
 - il démarre PostgreSQL dans Docker, sur un port libre (5432, sinon 55432…) ;
-- il crée ou aligne `apps/api/.env` ;
-- il lance l'API et le frontend, puis affiche les adresses PC et iPad.
+- il crée ou aligne `apps/api/.env`, avec un Admin de développement (mot de passe généré) ;
+- il lance l'API et le frontend, puis affiche les adresses PC et iPad et les identifiants de l'Admin.
 
 La page d'accueil liste les tests de chaque jalon.
 
@@ -293,6 +322,8 @@ POSTGRES_PORT=5433 pnpm db:up
 
 Ouvrez http://localhost:5173 : la page d'accueil donne, pour chaque jalon, le lien de test et les étapes à suivre. Le serveur Vite écoute sur le réseau local : depuis un iPad sur le même Wi-Fi, ouvrez `http://<ip-de-votre-machine>:5173`. Il relaie `/api/*` et `/ws` vers l'API.
 
+Pour vous connecter, définissez le premier Admin dans `apps/api/.env` (`ADMIN_USERNAME`, `ADMIN_PASSWORD`) : il est créé au démarrage de l'API s'il n'existe aucun Admin actif.
+
 Au démarrage, l'API applique automatiquement les migrations de la base (`apps/api/drizzle`). Après une modification de `apps/api/src/db/schema.ts`, générez la migration avec `pnpm --filter @fleight/api exec drizzle-kit generate`.
 
 Les tests d'intégration PostgreSQL ne s'exécutent que si `TEST_DATABASE_URL` est défini :
@@ -310,9 +341,26 @@ TEST_DATABASE_URL=postgres://fleight:fleight@localhost:5432/fleight pnpm test
 | `pnpm format` | Corrige le formatage |
 | `pnpm typecheck` | Vérifie les types de tous les packages |
 | `pnpm test` | Lance les tests (Vitest) |
-| `pnpm build` | Build de production |
+| `pnpm build` | Build de production (frontend `apps/web/dist`, API en un fichier `apps/api/dist/server.js`) |
 | `pnpm db:up` / `pnpm db:down` | Démarre / arrête PostgreSQL |
 | `pnpm load` | Test de charge contre l'API lancée : utilisateurs simulés sur le vrai WebSocket, latences et convergence (`--users 2,5,20,50 --duration 30 --board <nom>`) |
+
+### Configuration de l'API
+
+Variables d'environnement (`apps/api/.env`, modèle : `apps/api/.env.example`) :
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `DATABASE_URL` | — | Base PostgreSQL |
+| `HOST` / `PORT` | `0.0.0.0` / `3000` | Adresse d'écoute |
+| `LOG_LEVEL` | `info` | Niveau de logs (JSON, une ligne par événement) |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_EMAIL` | — | Premier Admin, créé au démarrage s'il n'existe aucun Admin actif |
+| `ALLOW_REGISTRATION` | `true` | Demandes de compte depuis l'interface (validées par un Admin) |
+| `SESSION_TTL_DAYS` / `SESSION_IDLE_DAYS` | `30` / `7` | Durée de vie maximale d'une session, et après inactivité |
+| `DATA_DIR` | `./data` | Répertoire des données : fichiers importés dans `blobs/` (volume Docker en production) |
+| `MAX_UPLOAD_MB` | `10` | Taille maximale d'une image importée |
+| `TRUST_PROXY` | `false` | Derrière un reverse proxy HTTPS : protocole et IP lus dans `X-Forwarded-*` |
+| `WEB_DIR` | — | Frontend construit à servir (`/app/web` dans l'image) ; absent en développement, où Vite le sert |
 
 ### Endpoints de l'API
 
@@ -320,15 +368,36 @@ TEST_DATABASE_URL=postgres://fleight:fleight@localhost:5432/fleight pnpm test
 |---|---|
 | `GET /health` | Liveness : le processus répond |
 | `GET /ready` | Readiness : PostgreSQL est joignable (`503` sinon) |
-| `GET /boards/:boardId/audit?limit=200` | Audit d'un board, du plus récent au plus ancien (ouvert en Phase 0 ; réservé au propriétaire et à l'admin à partir de M1.2) |
-| `WS /ws` | WebSocket ; le premier message doit être `HELLO` avec la version du protocole |
+| `POST /auth/login` | Connexion (nom d'utilisateur ou e-mail + mot de passe) ; pose le cookie de session |
+| `POST /auth/logout` | Déconnexion |
+| `GET /auth/me` | Utilisateur connecté |
+| `POST /auth/password` | Changement de son mot de passe (ferme ses autres sessions) |
+| `POST /auth/register` | Demande de compte, en attente de validation |
+| `GET`, `POST /admin/users` | Admin : liste et création de comptes (mot de passe temporaire généré) |
+| `PATCH`, `DELETE /admin/users/:id` | Admin : nom, e-mail, rôle, activation / validation, suppression |
+| `POST /admin/users/:id/reset-password` | Admin : mot de passe temporaire, sessions fermées |
+| `GET /admin/audit` | Admin : audit global (`scope=all\|accounts\|boards`, `boardId`) avec les mêmes filtres que l'audit d'un board |
+| `GET`, `POST /boards` | Ses whiteboards et ceux partagés avec lui, avec son rôle (`?hidden=true` : avec les masqués) ; création (nom, description, canvas infini ou standard) |
+| `GET /boards/code/:code` | Board correspondant à un code court (rate limiting par IP ; `403` si réservé à ses membres) |
+| `GET`, `PATCH`, `DELETE /boards/:id` | Détails (Viewer) ; renommage, description, masquage, session publique/privée, rôle par défaut, invités (Co-owner) ; suppression immédiate (Owner) |
+| `GET`, `POST /boards/:id/members` | Propriétaire et membres (tout participant) ; ajout par nom d'utilisateur ou e-mail (Co-owner, rôle au plus égal au sien) |
+| `PATCH`, `DELETE /boards/:id/members/:userId` | Rôle d'un membre ; retrait (Co-owner, membre de rôle au plus égal au sien), ou départ volontaire |
+| `POST /boards/:id/transfer` | Transfert de propriété à un membre (Owner ; il devient Co-owner) |
+| `POST /boards/:id/access-requests` | Demande d'accès à une session privée ; `GET /boards/:id/access-request` : état de sa demande (compte ou invité) |
+| `GET /boards/:id/access-requests`, `POST /boards/:id/access-requests/:requestId` | Demandes en attente ; acceptation (rôle, durée) ou refus (Co-owner) |
+| `POST /boards/code/:code/guest` | Rejoindre sans compte (nom) : cookie invité limité au board (cooldown des codes) |
+| `GET /guest` ; `DELETE /boards/:id/guests/:guestId` | Invité de la session et son board ; retrait d'un invité (Co-owner) |
+| `POST /boards/:id/assets` | Import d'une image (Editor ; corps brut ; type vérifié dans le fichier : PNG, JPEG, GIF, WebP ; SVG refusé) |
+| `GET /assets/:id` | Image importée (session requise, contenu immuable) |
+| `GET /boards/:id/audit` | Audit d'un board, du plus récent au plus ancien (Co-owner, Owner, Admin). Filtres : `category` (`objects`, `board`, `access`, `accounts`), `actor`, `q` (nom, auteur ou objet), `objectId`, `from`, `to` ; pagination `limit` (≤ 500) et `before` (curseur `nextBefore`) |
+| `WS /ws` | WebSocket, session requise ; le premier message doit être `HELLO` avec la version du protocole |
 
 ## Roadmap
 
 Le plan détaillé (jalons, critères de validation, décisions) est tenu dans [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) sur la branche `dev`.
 
 - [x] **Phase 0 — Proof of Concept technique** : canvas desktop + iPad/Apple Pencil, objets structurés, connecteurs, WebSocket, 2+ utilisateurs, locks, undo individuel, persistance, reconnexion, audit log. Terminée le 2 octobre 2026 — [rapport de fin de phase](docs/poc-report.md).
-- [ ] **Phase 1 — Core MVP** : auth locale, Users/Admins, canvas standard et infini, primitives, texte, images, dessin libre, sélection, groupes, frames, connecteurs, undo/redo, collaboration temps réel, locks, curseurs, présence, sessions par code, public/privé, permissions, guests, audit log.
+- [x] **Phase 1 — Core MVP** : auth locale, Users/Admins, canvas standard et infini, primitives, texte, images, dessin libre, sélection, groupes, frames, connecteurs, undo/redo, collaboration temps réel, locks, curseurs, présence, sessions par code, public/privé, permissions, guests, audit log, déploiement Docker, interface tablette. Version **`v0.1.0`** — [CHANGELOG](CHANGELOG.md).
 - [ ] **Phase 2 — Produit utilisable** : présentation, share links, import PDF/SVG/images, export SVG/PNG/PDF, rétention, limites de stockage, MFA, administration complète, transfert de propriété, reconnexion robuste, interface tablette complète.
 - [ ] **Phase 3 — Système de plugins** : SDK, API, permissions, sandbox, installation ZIP, cycle de vie, marketplace, plugin Network.
 - [ ] **Phase 4 — Auth enterprise** : LDAP, Active Directory, SAML, OIDC, mapping groupes → rôles.
@@ -337,8 +406,12 @@ Le plan détaillé (jalons, critères de validation, décisions) est tenu dans [
 
 ## Sécurité
 
-- Mots de passe hachés en Argon2id, sessions sécurisées avec expiration et rotation.
-- Protection contre le brute force et rate limiting.
+- Mots de passe hachés en Argon2id (paramètres OWASP) ; 10 caractères minimum, sans règles de composition.
+- Sessions en cookie `HttpOnly` / `SameSite=Lax` (et `Secure` en HTTPS) ; seul le hash du jeton est stocké ; expiration après 7 jours d'inactivité et 30 jours au plus ; jeton renouvelé chaque jour.
+- Anti brute force : compte bloqué 15 minutes après 5 échecs, tentatives de connexion limitées par adresse IP, temps de réponse identique pour un compte inconnu.
+- Requêtes qui modifient l'état et connexions WebSocket refusées si elles viennent d'une autre origine.
+- Désactiver un compte, le supprimer ou réinitialiser son mot de passe ferme immédiatement ses sessions et ses connexions.
+- Connexions, échecs et actions d'administration tracés dans l'audit log.
 - MFA TOTP optionnel, imposable globalement par l'Admin.
 - Chaque message WebSocket est associé à un utilisateur, une session, un whiteboard et des permissions, et est validé côté serveur.
 - Plugins isolés et limités par permissions.

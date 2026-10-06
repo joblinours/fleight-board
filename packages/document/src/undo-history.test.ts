@@ -137,3 +137,21 @@ describe('equal', () => {
     expect(equal({ a: 1 }, { a: 1, b: undefined })).toBe(false);
   });
 });
+
+describe('annulation d’une propriété facultative', () => {
+  it('produit un patch transmissible (null) qui retire la propriété', () => {
+    const document = new BoardDocument();
+    document.apply([{ kind: 'create', object: rectangle('a') }]);
+    const history = new UndoHistory();
+    const operations = [{ kind: 'update' as const, id: 'a', patch: { opacity: 0.3 } }];
+    history.track(document, operations, () => document.apply(operations));
+
+    const sent: unknown[] = [];
+    history.undo(document, (undo) => {
+      sent.push(JSON.parse(JSON.stringify(undo)));
+      document.apply(undo);
+    });
+    expect(sent).toEqual([[{ kind: 'update', id: 'a', patch: { opacity: null } }]]);
+    expect(document.get('a')).not.toHaveProperty('opacity');
+  });
+});

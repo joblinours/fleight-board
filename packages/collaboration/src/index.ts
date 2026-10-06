@@ -11,11 +11,21 @@ export {
   type CollaborationClientOptions,
   type CollaborationEvents,
   type ConnectionStatus,
+  CURSOR_SEND_MS,
+  type CursorPoint,
   LOCK_RENEW_MS,
   type Transport,
 } from './client';
 export { compactOperations, touchedIds } from './compact';
-export { CollaborationHub, type HubConnection, type HubLogger } from './hub';
+export {
+  type Authorize,
+  CollaborationHub,
+  type DisconnectReason,
+  type HubConnection,
+  type HubLogger,
+  type HubUser,
+  pickColor,
+} from './hub';
 export { type AcquireResult, LOCK_TTL_MS, LockTable } from './locks';
 export { InMemoryPubSub, type PubSub, type Unsubscribe } from './pubsub';
 export { SimulatedUser, type SimulationStep } from './simulation';

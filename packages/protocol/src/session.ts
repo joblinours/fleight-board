@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BoardObjectSchema, ObjectIdSchema } from './objects';
+import { BoardRoleSchema } from './roles';
 
 /** Nombre maximal d'opérations dans un lot. */
 export const MAX_OPERATIONS_PER_BATCH = 500;
@@ -33,9 +34,39 @@ export const GestureSchema = z.object({
 export const IntentSchema = z.enum(['undo', 'redo']);
 export type Intent = z.infer<typeof IntentSchema>;
 
+/**
+ * Partage de la présence : « drawing » (Drawing only) ne montre que les dessins,
+ * « cursor » (Cursor visible) montre aussi le curseur aux autres participants.
+ */
+export const PresenceModeSchema = z.enum(['drawing', 'cursor']);
+export type PresenceMode = z.infer<typeof PresenceModeSchema>;
+
+/** Palette des participants : chacun reçoit une couleur libre dans le board. */
+export const PARTICIPANT_COLORS = [
+  '#e11d48',
+  '#2563eb',
+  '#16a34a',
+  '#ea580c',
+  '#7c3aed',
+  '#0891b2',
+  '#db2777',
+  '#ca8a04',
+  '#4f46e5',
+  '#059669',
+] as const;
+
 export const ParticipantSchema = z.object({
   connectionId: z.string(),
   name: z.string(),
+  /** Compte de l'utilisateur (absent sans authentification). */
+  userId: z.string().optional(),
+  /** Couleur attribuée par le serveur (curseur, verrous). */
+  color: z.string(),
+  mode: PresenceModeSchema,
+  /** Rôle sur le board. */
+  role: BoardRoleSchema,
+  /** Invité sans compte. */
+  guest: z.boolean().optional(),
 });
 export type Participant = z.infer<typeof ParticipantSchema>;
 
@@ -51,6 +82,8 @@ export const JoinMessageSchema = z.object({
    * reconnexions (une connexion WebSocket, elle, change à chaque fois).
    */
   clientId: z.string().min(1).max(64),
+  /** Mode de présence (conservé à travers les reconnexions). */
+  mode: PresenceModeSchema.optional(),
 });
 
 export const LeaveMessageSchema = z.object({ type: z.literal('LEAVE') });
@@ -88,6 +121,23 @@ export const UnlockMessageSchema = z.object({
   objectIds: ObjectIdsSchema,
 });
 
+/** Position du curseur en coordonnées monde ; `null` : curseur hors du board. */
+export const CursorPositionSchema = z
+  .object({ x: z.number().finite(), y: z.number().finite() })
+  .nullable();
+
+/** Curseur de l'utilisateur, relayé aux autres participants en mode « cursor ». */
+export const CursorMessageSchema = z.object({
+  type: z.literal('CURSOR'),
+  position: CursorPositionSchema,
+});
+
+/** Changement du mode de présence. */
+export const PresenceModeMessageSchema = z.object({
+  type: z.literal('PRESENCE_MODE'),
+  mode: PresenceModeSchema,
+});
+
 /** Demande de l'état complet du board (après un rejet, par exemple). */
 export const SyncRequestSchema = z.object({ type: z.literal('SYNC_REQUEST') });
 
@@ -99,6 +149,8 @@ export const ClientSessionMessageSchema = z.discriminatedUnion('type', [
   LockMessageSchema,
   UnlockMessageSchema,
   SyncRequestSchema,
+  CursorMessageSchema,
+  PresenceModeMessageSchema,
 ]);
 export type ClientSessionMessage = z.infer<typeof ClientSessionMessageSchema>;
 export type OperationsMessage = z.infer<typeof OperationsMessageSchema>;
@@ -123,6 +175,8 @@ export const JoinedMessageSchema = z.object({
   type: z.literal('JOINED'),
   /** Identifiant de cette connexion (pour reconnaître ses propres verrous). */
   self: z.string(),
+  /** Rôle de cette connexion sur le board. */
+  role: BoardRoleSchema,
   snapshot: SnapshotSchema,
   participants: z.array(ParticipantSchema),
   locks: LockTableSchema,
@@ -175,7 +229,7 @@ export const AckMessageSchema = z.object({
 export const RejectMessageSchema = z.object({
   type: z.literal('REJECT'),
   batchId: z.string(),
-  code: z.enum(['INVALID_OPERATION', 'NOT_JOINED', 'LOCKED', 'CONFLICT']),
+  code: z.enum(['INVALID_OPERATION', 'NOT_JOINED', 'LOCKED', 'CONFLICT', 'FORBIDDEN']),
   message: z.string(),
 });
 
@@ -189,7 +243,35 @@ export const ParticipantLeftSchema = z.object({
   connectionId: z.string(),
 });
 
+/** Participant modifié (mode de présence). */
+export const ParticipantUpdatedSchema = z.object({
+  type: z.literal('PARTICIPANT_UPDATED'),
+  participant: ParticipantSchema,
+});
+
+/** Curseur d'un autre participant. */
+export const RemoteCursorSchema = z.object({
+  type: z.literal('CURSOR'),
+  connectionId: z.string(),
+  position: CursorPositionSchema,
+});
+
+/**
+ * Session privée : l'accès a été demandé, la connexion attend la décision
+ * (JOINED si elle est acceptée, fermeture 4403 si elle est refusée).
+ */
+export const AccessPendingSchema = z.object({ type: z.literal('ACCESS_PENDING') });
+
+/** Aux Co-owners et au propriétaire : les demandes d'accès en attente ont changé. */
+export const AccessRequestedSchema = z.object({
+  type: z.literal('ACCESS_REQUESTED'),
+  /** Nombre de demandes en attente. */
+  pending: z.number().int().nonnegative(),
+});
+
 export const ServerSessionMessageSchema = z.discriminatedUnion('type', [
+  AccessPendingSchema,
+  AccessRequestedSchema,
   JoinedMessageSchema,
   SnapshotMessageSchema,
   RemoteOperationsMessageSchema,
@@ -197,6 +279,8 @@ export const ServerSessionMessageSchema = z.discriminatedUnion('type', [
   RejectMessageSchema,
   ParticipantJoinedSchema,
   ParticipantLeftSchema,
+  ParticipantUpdatedSchema,
+  RemoteCursorSchema,
   LocksMessageSchema,
   LockDeniedSchema,
 ]);

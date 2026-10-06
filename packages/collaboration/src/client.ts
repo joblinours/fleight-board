@@ -1,10 +1,12 @@
 import { BoardDocument } from '@fleight/document';
 import {
+  type BoardRole,
   type ClientSessionMessage,
   type Intent,
   type Operation,
   type Participant,
   PROTOCOL_VERSION,
+  type PresenceMode,
   type RejectMessage,
   type ServerSessionMessage,
   ServerSessionMessageSchema,
@@ -19,7 +21,8 @@ export type Transport = {
   close(): void;
 };
 
-export type ConnectionStatus = 'connecting' | 'joined' | 'closed';
+/** `waiting` : session privée, l'accès a été demandé et attend une décision. */
+export type ConnectionStatus = 'connecting' | 'waiting' | 'joined' | 'closed';
 
 export type CollaborationEvents = {
   onStatus?(status: ConnectionStatus): void;
@@ -35,7 +38,18 @@ export type CollaborationEvents = {
   onLocks?(locks: ReadonlyMap<string, string>): void;
   /** Une demande de verrou a été refusée : l'objet est modifié par `holder`. */
   onLockDenied?(objectIds: readonly string[], holder: string): void;
+  /** Curseurs des autres participants (connexion → position monde). */
+  onCursors?(cursors: ReadonlyMap<string, CursorPoint>): void;
+  /** Rôle de l'utilisateur sur le board (à la connexion, puis à chaque changement). */
+  onRole?(role: BoardRole): void;
+  /** Co-owners et propriétaire : nombre de demandes d'accès en attente. */
+  onAccessRequests?(pending: number): void;
 };
+
+export type CursorPoint = { x: number; y: number };
+
+/** Intervalle minimal entre deux envois du curseur (~20 Hz). */
+export const CURSOR_SEND_MS = 50;
 
 /** Intervalle de renouvellement des verrous détenus (le serveur les expire après 10 s). */
 export const LOCK_RENEW_MS = 4000;
@@ -48,6 +62,8 @@ export type CollaborationClientOptions = CollaborationEvents & {
   document?: BoardDocument;
   /** Intervalle minimal entre deux envois, en ms (~30 Hz par défaut). */
   flushIntervalMs?: number;
+  /** Mode de présence initial (« cursor » par défaut). */
+  mode?: PresenceMode;
   /** Planification de l'envoi ; injectable pour les tests. */
   schedule?: (callback: () => void, delayMs: number) => void;
 };
@@ -107,12 +123,83 @@ export class CollaborationClient {
    * complet qu'il renverra les inclut donc déjà (ou ils auront été refusés).
    */
   #syncMarks: Array<Set<string>> = [];
+  #mode: PresenceMode;
+  #role: BoardRole | undefined;
+  readonly #cursors = new Map<string, CursorPoint>();
+  /** Dernière position du curseur local pas encore envoyée (`null` : hors du board). */
+  #cursor: { position: CursorPoint | null } | undefined;
+  #cursorScheduled = false;
 
   constructor(options: CollaborationClientOptions) {
     this.#options = options;
     this.document = options.document ?? new BoardDocument();
     this.clientId = options.clientId ?? createId();
     this.#schedule = options.schedule ?? ((callback, delay) => setTimeout(callback, delay));
+    this.#mode = options.mode ?? 'cursor';
+  }
+
+  /** Curseurs visibles des autres participants. */
+  get cursors(): ReadonlyMap<string, CursorPoint> {
+    return this.#cursors;
+  }
+
+  /** Rôle sur le board, connu après la connexion. */
+  get role(): BoardRole | undefined {
+    return this.#role;
+  }
+
+  get presenceMode(): PresenceMode {
+    return this.#mode;
+  }
+
+  /**
+   * « drawing » : seuls les dessins sont partagés ; « cursor » : le curseur aussi.
+   * Le mode est conservé à travers les reconnexions.
+   */
+  setPresenceMode(mode: PresenceMode): void {
+    if (mode === this.#mode) return;
+    if (mode === 'drawing' && this.#status === 'joined') {
+      // Le curseur disparaît chez les autres avant le changement de mode.
+      this.#send({ type: 'CURSOR', position: null });
+    }
+    this.#mode = mode;
+    this.#cursor = undefined;
+    if (this.#status === 'joined') this.#send({ type: 'PRESENCE_MODE', mode });
+  }
+
+  /**
+   * Position du curseur local en coordonnées monde (`null` : il quitte le board).
+   * Envoyée au plus toutes les 50 ms, seulement en mode « cursor ».
+   */
+  moveCursor(position: CursorPoint | null): void {
+    if (this.#mode !== 'cursor' || this.#status !== 'joined') return;
+    this.#cursor = { position };
+    if (this.#cursorScheduled) return;
+    this.#sendCursor();
+  }
+
+  #sendCursor(): void {
+    const cursor = this.#cursor;
+    if (!cursor || this.#mode !== 'cursor' || this.#status !== 'joined') return;
+    this.#cursor = undefined;
+    this.#send({ type: 'CURSOR', position: cursor.position });
+    this.#cursorScheduled = true;
+    this.#schedule(() => {
+      this.#cursorScheduled = false;
+      this.#sendCursor();
+    }, CURSOR_SEND_MS);
+  }
+
+  #setRole(role: BoardRole): void {
+    if (role === this.#role) return;
+    this.#role = role;
+    this.#options.onRole?.(role);
+  }
+
+  #setCursor(connectionId: string, position: CursorPoint | null): void {
+    if (position) this.#cursors.set(connectionId, position);
+    else if (!this.#cursors.delete(connectionId)) return;
+    this.#options.onCursors?.(this.#cursors);
   }
 
   get status(): ConnectionStatus {
@@ -143,6 +230,7 @@ export class CollaborationClient {
       boardId: this.#options.boardId,
       name: this.#options.name,
       clientId: this.clientId,
+      mode: this.#mode,
     });
   }
 
@@ -158,7 +246,14 @@ export class CollaborationClient {
     // Une demande de resynchronisation en cours est perdue avec la connexion.
     this.#syncRequested = false;
     this.#syncMarks = [];
+    this.#clearCursors();
     this.#setStatus('closed');
+  }
+
+  #clearCursors(): void {
+    if (!this.#cursors.size) return;
+    this.#cursors.clear();
+    this.#options.onCursors?.(this.#cursors);
   }
 
   /**
@@ -305,6 +400,12 @@ export class CollaborationClient {
 
   #handle(message: ServerSessionMessage): void {
     switch (message.type) {
+      case 'ACCESS_PENDING':
+        this.#setStatus('waiting');
+        break;
+      case 'ACCESS_REQUESTED':
+        this.#options.onAccessRequests?.(message.pending);
+        break;
       case 'JOINED':
         this.#connectionId = message.self;
         this.#locks.clear();
@@ -326,6 +427,8 @@ export class CollaborationClient {
         this.#reportRejections();
         this.#participants = message.participants;
         this.#options.onParticipants?.(this.#participants);
+        this.#setRole(message.role);
+        this.#clearCursors();
         this.#setStatus('joined');
         this.#resendPending();
         break;
@@ -415,6 +518,20 @@ export class CollaborationClient {
           ({ connectionId }) => connectionId !== message.connectionId,
         );
         this.#options.onParticipants?.(this.#participants);
+        this.#setCursor(message.connectionId, null);
+        break;
+      case 'PARTICIPANT_UPDATED': {
+        const { participant } = message;
+        this.#participants = this.#participants.map((current) =>
+          current.connectionId === participant.connectionId ? participant : current,
+        );
+        this.#options.onParticipants?.(this.#participants);
+        if (participant.mode !== 'cursor') this.#setCursor(participant.connectionId, null);
+        if (participant.connectionId === this.#connectionId) this.#setRole(participant.role);
+        break;
+      }
+      case 'CURSOR':
+        this.#setCursor(message.connectionId, message.position);
         break;
     }
   }
