@@ -2,7 +2,11 @@ import websocket from '@fastify/websocket';
 import { CollaborationHub, type HubLogger } from '@fleight/collaboration';
 import type { HealthResponse } from '@fleight/protocol';
 import { PROTOCOL_VERSION } from '@fleight/protocol';
-import Fastify, { type FastifyRequest, type FastifyServerOptions } from 'fastify';
+import Fastify, {
+  type FastifyBaseLogger,
+  type FastifyRequest,
+  type FastifyServerOptions,
+} from 'fastify';
 import type { AssetService } from './assets/asset-service';
 import { registerAssets } from './assets/routes';
 import type { AuthService, Identity } from './auth/auth-service';
@@ -12,11 +16,16 @@ import { GUEST_COOKIE, requireUserOrGuest } from './boards/guest-auth';
 import { registerBoards } from './boards/routes';
 import type { Database } from './database';
 import type { AuditLogReader } from './db/audit-log';
+import { registerWeb, stripApiPrefix } from './web';
 import { type ConnectionIdentity, registerWebSocket } from './websocket';
 
 export type AppOptions = {
   database: Pick<Database, 'ping'>;
   logger?: FastifyServerOptions['logger'];
+  /** Logger déjà construit (production : pino, JSON) ; prioritaire sur `logger`. */
+  loggerInstance?: FastifyBaseLogger;
+  /** Frontend construit à servir (production) ; l'API reste aussi joignable sous `/api`. */
+  webDir?: string;
   /** Construit le hub de collaboration (stockage en mémoire par défaut). */
   createHub?: (log: HubLogger) => CollaborationHub;
   /** Comptes et sessions (routes `/auth`, `/admin`). */
@@ -48,6 +57,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 export async function buildApp({
   database,
   logger = false,
+  loggerInstance,
+  webDir,
   createHub,
   auth,
   allowRegistration,
@@ -58,7 +69,11 @@ export async function buildApp({
   identify,
   trustProxy = false,
 }: AppOptions) {
-  const app = Fastify({ logger, trustProxy });
+  const app = Fastify({
+    ...(loggerInstance ? { loggerInstance } : { logger }),
+    trustProxy,
+    rewriteUrl: (request) => stripApiPrefix(request.url ?? '/'),
+  });
   const collaboration = createHub ? createHub(app.log) : new CollaborationHub({ log: app.log });
 
   // Protection CSRF (en plus de SameSite=Lax) : une requête qui modifie quelque chose,
@@ -74,12 +89,13 @@ export async function buildApp({
   await app.register(websocket, { options: { maxPayload: MAX_MESSAGE_BYTES } });
 
   // Liveness : le processus répond.
-  app.get('/health', async (): Promise<HealthResponse> => {
+  // Sondes appelées en boucle (healthcheck Docker) : pas de log par requête.
+  app.get('/health', { logLevel: 'warn' }, async (): Promise<HealthResponse> => {
     return { status: 'ok', protocolVersion: PROTOCOL_VERSION };
   });
 
   // Readiness : les dépendances sont joignables.
-  app.get('/ready', async (_request, reply): Promise<HealthResponse> => {
+  app.get('/ready', { logLevel: 'warn' }, async (_request, reply): Promise<HealthResponse> => {
     const ready = await database.ping();
     reply.code(ready ? 200 : 503);
     return { status: ready ? 'ok' : 'unavailable', protocolVersion: PROTOCOL_VERSION };
@@ -148,6 +164,8 @@ export async function buildApp({
   });
   // Compte désactivé, supprimé ou mot de passe réinitialisé : ses connexions sont fermées.
   if (auth) auth.onRevoked = (userId) => connections.closeUser(userId);
+
+  if (webDir) await registerWeb(app, webDir);
 
   return app;
 }

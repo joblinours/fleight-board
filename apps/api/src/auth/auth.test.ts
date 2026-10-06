@@ -394,12 +394,11 @@ describe.skipIf(!url)('authentification', () => {
     await login(app, admin.username, 'mauvais-mot-de-passe');
     const audit = await app.inject({
       method: 'GET',
-      url: '/admin/audit?limit=20',
+      // Filtré sur ce compte : les tests lancés en parallèle écrivent aussi dans l'audit.
+      url: `/admin/audit?objectId=${admin.id}&limit=20`,
       cookies: session.cookies,
     });
-    const actions = (audit.json().entries as Array<{ action: string; objectId: string }>)
-      .filter(({ objectId }) => objectId === admin.id)
-      .map(({ action }) => action);
+    const actions = (audit.json().entries as Array<{ action: string }>).map(({ action }) => action);
     expect(actions).toEqual(['auth.login_failed', 'auth.login']);
     await app.close();
   });
