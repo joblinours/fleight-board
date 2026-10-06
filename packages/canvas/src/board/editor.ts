@@ -9,6 +9,7 @@ import {
   FRAME_TITLE_BAND,
   groupOperations,
   hitTestObject,
+  moveObjectsOperations,
   objectBox,
   type Point,
   pasteOperations,
@@ -33,6 +34,7 @@ import { CanvasRenderer, type Page, type ViewState } from '../renderer';
 import { Scene } from '../scene';
 import { parseObjects, serializeObjects } from './clipboard';
 import { HANDLE_SIZE_PX, HANDLES, handlePosition } from './handles';
+import { type KeyboardCommand, keyboardCommand } from './keyboard';
 import { boardPainters, createBoardPainters, type ImageSource } from './painters';
 import type { BoardSceneItem } from './scene-items';
 import { syncScene } from './scene-sync';
@@ -135,6 +137,14 @@ export type StyleChange = Partial<{
 
 /** Délai sans nouvelle modification après lequel un réglage (curseur…) est terminé. */
 const STYLE_GESTURE_MS = 600;
+/** Déplacement de la sélection aux flèches (unités du monde), avec Maj. */
+const NUDGE = 1;
+const NUDGE_LARGE = 10;
+/** Déplacement de la vue aux flèches, sans sélection (pixels écran), avec Maj. */
+const PAN_KEY_PX = 40;
+const PAN_KEY_LARGE_PX = 200;
+/** Facteur d'un cran de zoom (boutons, clavier). */
+const ZOOM_STEP = 1.25;
 
 /** Éditeur de whiteboard local : document, rendu, entrées, outils et sélection. */
 export class BoardEditor {
@@ -559,17 +569,33 @@ export class BoardEditor {
     }
     if (!operations.length) return;
 
-    // Pendant un geste du pointeur, le réglage en fait partie.
+    const key = Object.keys(change).sort().join(',');
+    const ids = operations.map((operation) => (operation.kind === 'update' ? operation.id : ''));
+    this.#batched(key, ids, operations);
+  }
+
+  /**
+   * Applique des modifications successives d'un même type (réglage au curseur,
+   * flèches) comme une seule action annulable, objets verrouillés le temps du lot.
+   */
+  #batched(key: string, ids: string[], operations: DocumentOperation[]): void {
+    if (!operations.length) return;
+    // Pendant un geste du pointeur, la modification en fait partie.
     if (this.#gestureId) {
       this.apply(operations);
       return;
     }
-    const key = Object.keys(change).sort().join(',');
+    const locks = this.#options.locks;
     if (this.#styleGesture?.key !== key) this.#endStyleGesture();
-    const ids = operations.map((operation) => (operation.kind === 'update' ? operation.id : ''));
     if (!this.#styleGesture) {
       locks?.acquire(ids);
       this.#styleGesture = { key, id: createId(), ids, timer: setTimeout(() => {}, 0) };
+    } else {
+      const missing = ids.filter((id) => !this.#styleGesture?.ids.includes(id));
+      if (missing.length) {
+        locks?.acquire(missing);
+        this.#styleGesture.ids.push(...missing);
+      }
     }
     const gesture = this.#styleGesture;
     clearTimeout(gesture.timer);
@@ -657,6 +683,37 @@ export class BoardEditor {
     const { width, height } = this.#sceneRenderer.viewport;
     this.camera.fitBounds(bounds, width, height, 96);
     this.#invalidate();
+  }
+
+  /** Niveau de zoom actuel (1 = 100 %). */
+  get zoom(): number {
+    return this.camera.zoom;
+  }
+
+  /** Zoome autour du centre de la vue. */
+  zoomBy(factor: number): void {
+    const { width, height } = this.#sceneRenderer.viewport;
+    this.#zoomAt({ x: width / 2, y: height / 2 }, factor);
+  }
+
+  /** Revient à 100 %, autour du centre de la vue. */
+  resetZoom(): void {
+    this.zoomBy(1 / this.camera.zoom);
+  }
+
+  /**
+   * Déplace la sélection (et le contenu des frames sélectionnées), sauf ce que
+   * d'autres participants modifient. Des déplacements rapprochés (touche maintenue)
+   * forment une seule action annulable.
+   */
+  nudgeSelection(dx: number, dy: number): void {
+    if (this.#readOnly || !this.selection.size) return;
+    const locks = this.#options.locks;
+    const ids = [...withFrameContents(this.document, this.selection.ids)].filter(
+      (id) => !locks?.lockedBy(id),
+    );
+    if (!ids.length) return;
+    this.#batched('nudge', ids, moveObjectsOperations(this.document, ids, dx, dy));
   }
 
   /** Enregistre le texte saisi pour un objet ; un texte vide est supprimé. */
@@ -970,6 +1027,68 @@ export class BoardEditor {
     this.#options.onViewChange?.();
   }
 
+  #run(command: KeyboardCommand): void {
+    switch (command.kind) {
+      case 'delete':
+        this.deleteSelection();
+        break;
+      case 'escape':
+        this.selection.clear();
+        this.setTool('select');
+        break;
+      case 'undo':
+        this.undo();
+        break;
+      case 'redo':
+        this.redo();
+        break;
+      case 'selectAll':
+        this.selectAll();
+        break;
+      case 'duplicate':
+        this.duplicate();
+        break;
+      case 'group':
+        this.group();
+        break;
+      case 'ungroup':
+        this.ungroup();
+        break;
+      case 'bringToFront':
+        this.bringToFront();
+        break;
+      case 'sendToBack':
+        this.sendToBack();
+        break;
+      case 'tool':
+        this.setTool(command.tool);
+        break;
+      case 'arrow': {
+        if (this.selection.size && !this.#readOnly) {
+          const step = command.large ? NUDGE_LARGE : NUDGE;
+          this.nudgeSelection(command.dx * step, command.dy * step);
+          break;
+        }
+        // Sans sélection : la vue se déplace (le contenu va dans l'autre sens).
+        const step = command.large ? PAN_KEY_LARGE_PX : PAN_KEY_PX;
+        this.#panBy(-command.dx * step, -command.dy * step);
+        break;
+      }
+      case 'zoomIn':
+        this.zoomBy(ZOOM_STEP);
+        break;
+      case 'zoomOut':
+        this.zoomBy(1 / ZOOM_STEP);
+        break;
+      case 'zoomReset':
+        this.resetZoom();
+        break;
+      case 'fit':
+        this.fitContent();
+        break;
+    }
+  }
+
   #attachKeyboard(): () => void {
     // Saisie de texte en cours : les raccourcis sont laissés au champ. Un curseur,
     // une case à cocher ou un sélecteur de couleur (panneau de propriétés) ne bloquent rien.
@@ -981,65 +1100,14 @@ export class BoardEditor {
     };
     const editing = (event: KeyboardEvent) => editingTarget(event.target);
 
-    const shortcuts: Record<string, ToolName> = {
-      v: 'select',
-      r: 'rectangle',
-      o: 'ellipse',
-      g: 'polygon',
-      t: 'text',
-      c: 'connector',
-      l: 'line',
-      a: 'arrow',
-      p: 'pen',
-      h: 'highlighter',
-      e: 'eraser',
-      f: 'frame',
-      q: 'lasso',
-    };
-
     const onKeyDown = (event: KeyboardEvent) => {
       this.#modifiers.shift = event.shiftKey;
       if (editing(event) || this.router.isDrawing) return;
-      const key = event.key.toLowerCase();
-      if (key === 'delete' || key === 'backspace') {
-        event.preventDefault();
-        this.deleteSelection();
-      } else if (key === 'escape') {
-        this.selection.clear();
-        this.setTool('select');
-      } else if ((event.ctrlKey || event.metaKey) && key === 'z') {
-        event.preventDefault();
-        if (event.shiftKey) this.redo();
-        else this.undo();
-      } else if ((event.ctrlKey || event.metaKey) && key === 'y') {
-        event.preventDefault();
-        this.redo();
-      } else if ((event.ctrlKey || event.metaKey) && key === 'a') {
-        event.preventDefault();
-        this.selectAll();
-      } else if ((event.ctrlKey || event.metaKey) && key === 'd') {
-        event.preventDefault();
-        this.duplicate();
-      } else if ((event.ctrlKey || event.metaKey) && key === 'g') {
-        event.preventDefault();
-        if (event.shiftKey) this.ungroup();
-        else this.group();
-      } else if (
-        (event.ctrlKey || event.metaKey) &&
-        (event.code === 'BracketRight' || key === ']')
-      ) {
-        event.preventDefault();
-        this.bringToFront();
-      } else if (
-        (event.ctrlKey || event.metaKey) &&
-        (event.code === 'BracketLeft' || key === '[')
-      ) {
-        event.preventDefault();
-        this.sendToBack();
-      } else if (!event.ctrlKey && !event.metaKey && !event.altKey) {
-        const tool = shortcuts[key];
-        if (tool) this.setTool(tool);
-      }
+      const command = keyboardCommand(event);
+      if (!command) return;
+      // Les lettres seules et Échap n'empêchent rien d'autre (saisie, fermeture).
+      if (command.kind !== 'tool' && command.kind !== 'escape') event.preventDefault();
+      this.#run(command);
     };
     const onKeyUp = (event: KeyboardEvent) => {
       this.#modifiers.shift = event.shiftKey;

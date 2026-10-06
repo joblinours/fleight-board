@@ -84,7 +84,18 @@ function currentValues(editor: BoardEditor, object: BoardObject | undefined) {
  * texte, pointes de flèche. Agit sur la sélection, ou sur le style des prochains
  * objets quand rien n'est sélectionné.
  */
-export function PropertiesPanel({ editor, tool }: { editor: BoardEditor | null; tool: ToolName }) {
+export function PropertiesPanel({
+  editor,
+  tool,
+  collapsed,
+  onCollapsedChange,
+}: {
+  editor: BoardEditor | null;
+  tool: ToolName;
+  /** Replié : un simple bouton, pour libérer la surface de dessin (tablette). */
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
+}) {
   // Re-rendu après un réglage (les valeurs sont lues dans l'éditeur).
   const [, setVersion] = useState(0);
   if (!editor) return null;
@@ -122,8 +133,41 @@ export function PropertiesPanel({ editor, tool }: { editor: BoardEditor | null; 
     if (text) void navigator.clipboard?.writeText(text).catch(() => {});
   };
 
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        className="properties-toggle"
+        title="Afficher les propriétés"
+        aria-label="Afficher les propriétés"
+        onClick={() => onCollapsedChange(false)}
+      >
+        <Icon name="palette" size={19} />
+        {fields.has('stroke') && (
+          <span className="properties-toggle-color" style={{ background: values.stroke }} />
+        )}
+      </button>
+    );
+  }
+
   return (
     <aside className="properties" aria-label="Propriétés">
+      <div className="properties-head">
+        <strong>
+          {objects.length
+            ? `Sélection${objects.length > 1 ? ` · ${objects.length}` : ''}`
+            : 'Style'}
+        </strong>
+        <button
+          type="button"
+          className="tool-button small"
+          title="Replier les propriétés"
+          aria-label="Replier les propriétés"
+          onClick={() => onCollapsedChange(true)}
+        >
+          <Icon name="minimize" size={16} />
+        </button>
+      </div>
       {showActions && (
         <div className="properties-actions" role="toolbar" aria-label="Actions sur la sélection">
           {objects.length > 0 && (
