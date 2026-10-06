@@ -249,23 +249,32 @@ fleight-board/
 │   └── shared/           # Utilitaires communs (identifiants ULID…)
 ├── infrastructure/
 │   └── compose/          # docker-compose de développement
-└── docs/                 # Plan d'implémentation, rapports
+├── scripts/              # dev.sh, backup.sh, restore.sh
+├── docs/                 # Plan d'implémentation, déploiement, rapports
+├── Dockerfile            # Image de production (l'API sert aussi le frontend)
+└── docker-compose.yml    # Déploiement : application + PostgreSQL
 ```
 
-À venir : `packages/plugin-sdk`, `plugins/network`, `infrastructure/docker` (images de production), `tests/` (collaboration et e2e).
+À venir : `packages/plugin-sdk`, `plugins/network`, `tests/` (collaboration et e2e).
 
 ## Installation
-
-_(prévu — disponible à partir de la première version déployable)_
 
 ```bash
 git clone https://github.com/joblinours/fleight-board.git
 cd fleight-board
-cp .env.example .env    # adapter la configuration
+cp .env.example .env    # POSTGRES_PASSWORD et premier Admin (ADMIN_USERNAME / ADMIN_PASSWORD)
 docker compose up -d
 ```
 
-Seront documentés : variables d'environnement, volumes, healthchecks (`/health`, `/ready`, `/metrics`), sauvegarde/restauration et procédure de mise à jour.
+L'application répond sur `http://<serveur>:8080`. Une seule image (`ghcr.io/joblinours/fleight-board`) sert l'interface, l'API et le WebSocket ; les migrations de la base s'appliquent au démarrage.
+
+Le guide [docs/deployment.md](docs/deployment.md) couvre :
+- l'installation avec **Portainer** ;
+- HTTPS derrière un reverse proxy ;
+- les variables et les volumes ;
+- les logs JSON et les healthchecks (`/health`, `/ready`) ;
+- la **sauvegarde et la restauration** (`scripts/backup.sh`, `scripts/restore.sh`) ;
+- la **mise à jour**.
 
 ## Développement
 
@@ -326,7 +335,7 @@ TEST_DATABASE_URL=postgres://fleight:fleight@localhost:5432/fleight pnpm test
 | `pnpm format` | Corrige le formatage |
 | `pnpm typecheck` | Vérifie les types de tous les packages |
 | `pnpm test` | Lance les tests (Vitest) |
-| `pnpm build` | Build de production |
+| `pnpm build` | Build de production (frontend `apps/web/dist`, API en un fichier `apps/api/dist/server.js`) |
 | `pnpm db:up` / `pnpm db:down` | Démarre / arrête PostgreSQL |
 | `pnpm load` | Test de charge contre l'API lancée : utilisateurs simulés sur le vrai WebSocket, latences et convergence (`--users 2,5,20,50 --duration 30 --board <nom>`) |
 
@@ -338,13 +347,14 @@ Variables d'environnement (`apps/api/.env`, modèle : `apps/api/.env.example`) :
 |---|---|---|
 | `DATABASE_URL` | — | Base PostgreSQL |
 | `HOST` / `PORT` | `0.0.0.0` / `3000` | Adresse d'écoute |
-| `LOG_LEVEL` | `info` | Niveau de logs |
+| `LOG_LEVEL` | `info` | Niveau de logs (JSON, une ligne par événement) |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_EMAIL` | — | Premier Admin, créé au démarrage s'il n'existe aucun Admin actif |
 | `ALLOW_REGISTRATION` | `true` | Demandes de compte depuis l'interface (validées par un Admin) |
 | `SESSION_TTL_DAYS` / `SESSION_IDLE_DAYS` | `30` / `7` | Durée de vie maximale d'une session, et après inactivité |
 | `DATA_DIR` | `./data` | Répertoire des données : fichiers importés dans `blobs/` (volume Docker en production) |
 | `MAX_UPLOAD_MB` | `10` | Taille maximale d'une image importée |
 | `TRUST_PROXY` | `false` | Derrière un reverse proxy HTTPS : protocole et IP lus dans `X-Forwarded-*` |
+| `WEB_DIR` | — | Frontend construit à servir (`/app/web` dans l'image) ; absent en développement, où Vite le sert |
 
 ### Endpoints de l'API
 

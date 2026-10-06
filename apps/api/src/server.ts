@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { CollaborationHub } from '@fleight/collaboration';
+import { pino } from 'pino';
 import { buildApp } from './app';
 import { AssetService } from './assets/asset-service';
 import { FilesystemBlobStorage } from './assets/blob-storage';
@@ -10,20 +11,35 @@ import { connectDatabase } from './database';
 import { PostgresAuditLog } from './db/audit-log';
 import { PostgresBoardStore } from './db/board-store';
 
-const config = loadConfig();
+let config: ReturnType<typeof loadConfig>;
+try {
+  config = loadConfig();
+} catch (error) {
+  pino().fatal(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
+
+// Logs structurés (une ligne JSON par événement), lisibles par Docker, Loki, etc.
+const log = pino({
+  level: config.LOG_LEVEL,
+  base: { service: 'fleight-api' },
+  timestamp: pino.stdTimeFunctions.isoTime,
+});
+
 const database = connectDatabase(config.DATABASE_URL);
 try {
+  // Migrations appliquées à chaque démarrage (sans effet si la base est à jour).
   await database.migrate();
+  log.info('base de données à jour');
 } catch (error) {
   // Sans base, l'API ne peut rien enregistrer : on s'arrête avec un message clair.
   const cause = error instanceof Error && error.cause instanceof Error ? error.cause : error;
-  console.error(
-    [
-      `Impossible d'initialiser PostgreSQL (${describeDatabase(config.DATABASE_URL)}) :`,
-      `  ${cause instanceof Error ? cause.message : String(cause)}`,
-      'Vérifiez que la base du projet tourne (pnpm db:up) et que DATABASE_URL',
-      '(apps/api/.env) pointe sur son port, avec ses identifiants.',
-    ].join('\n'),
+  log.fatal(
+    {
+      database: describeDatabase(config.DATABASE_URL),
+      error: cause instanceof Error ? cause.message : String(cause),
+    },
+    "Impossible d'initialiser PostgreSQL : vérifiez que la base tourne (pnpm db:up, ou le service postgres du docker-compose) et que DATABASE_URL pointe sur elle, avec ses identifiants",
   );
   await database.close();
   process.exit(1);
@@ -40,13 +56,14 @@ if (config.ADMIN_USERNAME && config.ADMIN_PASSWORD) {
     password: config.ADMIN_PASSWORD,
     email: config.ADMIN_EMAIL,
   });
-  if (created) console.info(`Premier Admin créé : ${config.ADMIN_USERNAME}`);
+  if (created) log.info({ username: config.ADMIN_USERNAME }, 'premier Admin créé');
 }
 
 let hub: CollaborationHub | undefined;
 const app = await buildApp({
   database,
-  logger: { level: config.LOG_LEVEL },
+  loggerInstance: log,
+  ...(config.WEB_DIR ? { webDir: config.WEB_DIR } : {}),
   auth,
   boards: new BoardService(database.db),
   assets: new AssetService(database.db, new FilesystemBlobStorage(join(config.DATA_DIR, 'blobs'))),

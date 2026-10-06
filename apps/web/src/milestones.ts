@@ -334,4 +334,20 @@ export const MILESTONES: Milestone[] = [
       'Sur l’iPad (largeur tablette), la barre latérale se replie en icônes.',
     ],
   },
+  {
+    id: 'M1.10',
+    title: 'Déploiement (Docker)',
+    summary:
+      'Une image (l’API sert l’interface), docker-compose avec PostgreSQL, migrations au démarrage, logs JSON, sauvegardes.',
+    href: '#/',
+    linkLabel: 'Ouvrir mes tableaux',
+    steps: [
+      'Sur le serveur : cp .env.example .env, renseigner POSTGRES_PASSWORD et le premier Admin, puis docker compose up -d.',
+      'docker compose ps : les deux services passent « healthy » ; ouvrir http://<serveur>:8080 et se connecter.',
+      'Créer un tableau et dessiner depuis l’ordinateur et l’iPad : la collaboration passe par le même port.',
+      'docker compose restart app : les tableaux sont toujours là ; docker compose logs app affiche des lignes JSON.',
+      './scripts/backup.sh /tmp/sauvegardes, supprimer un tableau, puis ./scripts/restore.sh avec les deux fichiers : le tableau revient.',
+      'Ou avec Portainer : stack « Repository » sur ce dépôt (docs/deployment.md).',
+    ],
+  },
 ];

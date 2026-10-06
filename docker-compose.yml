@@ -1,0 +1,50 @@
+# Déploiement de Fleight Board : application + PostgreSQL.
+#   cp .env.example .env    (puis renseigner au moins POSTGRES_PASSWORD et l'Admin)
+#   docker compose up -d
+# Portainer, sauvegardes et mises à jour : docs/deployment.md
+name: fleight-board
+
+services:
+  app:
+    # Image publiée par la CI ; sans accès au registre, elle est construite depuis ce dépôt.
+    image: ${FLEIGHT_IMAGE:-ghcr.io/joblinours/fleight-board:latest}
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${FLEIGHT_PORT:-8080}:3000"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-fleight}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant (voir .env.example)}@postgres:5432/${POSTGRES_DB:-fleight}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-10}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+      SESSION_IDLE_DAYS: ${SESSION_IDLE_DAYS:-7}
+    volumes:
+      # Fichiers importés (images).
+      - fleight-data:/data
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fleight}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant (voir .env.example)}
+      POSTGRES_DB: ${POSTGRES_DB:-fleight}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  fleight-data:
+  postgres-data:

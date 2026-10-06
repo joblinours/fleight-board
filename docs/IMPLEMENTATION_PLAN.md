@@ -354,11 +354,20 @@ Au-delà de l'objectif, sur un seul board : 100 utilisateurs → ACK p50 115 ms,
 
 ### M1.10 — Déploiement
 
-- [ ] Dockerfiles multi-stage (web servi par l'API ou un Nginx, à trancher en M1.10)
-- [ ] `docker-compose.yml` + `.env.example`, volumes, healthchecks `/health` et `/ready`
-- [ ] Migrations automatiques au démarrage
-- [ ] Logs structurés (JSON)
-- [ ] Documentation : installation, Portainer, sauvegarde/restauration, mise à jour
+- [x] Dockerfile multi-stage : une image, le frontend est servi par l'API
+- [x] `docker-compose.yml` + `.env.example`, volumes, healthchecks `/health` et `/ready`
+- [x] Migrations automatiques au démarrage
+- [x] Logs structurés (JSON)
+- [x] Documentation : installation, Portainer, sauvegarde/restauration, mise à jour (`docs/deployment.md`)
+- [x] Image publiée sur GHCR par la CI, après un test de la stack Compose
+
+→ **Validé** :
+- tests (configuration, frontend servi avec le préfixe `/api`, cache) ;
+- image construite et stack Compose démarrée : migrations, premier Admin (Argon2 natif), healthchecks ;
+- parcours complet dans le navigateur contre le conteneur : connexion, création, dessin en temps réel, persistance après rechargement ;
+- import d'image sur le volume, sous l'utilisateur non-root ;
+- sauvegarde puis restauration (base et fichiers) ;
+- arrêt propre sur `SIGTERM`.
 
 ### M1.11 — Interface tablette
 
@@ -406,6 +415,7 @@ Au-delà de l'objectif, sur un seul board : 100 utilisateurs → ACK p50 115 ms,
 | 2026-10-02 | M1.7 : le propriétaire reste dans `boards.owner_id`, les autres rôles dans `board_members` ; « Owner » ne s'attribue pas, il se transfère (l'ancien propriétaire devient Co-owner), ce qui plafonne naturellement toute délégation — Admin compris — à Co-owner. L'Admin global n'a aucun droit implicite sur un board (il garde la lecture de l'audit). En attendant les sessions publiques/privées (M1.8), chaque board règle l'accès des non-membres qui ont le lien ou le code : Editor (défaut, comportement antérieur), Viewer ou aucun ; un rôle de membre l'emporte même s'il est plus faible. Le hub reçoit une fonction `authorize` : rôle vérifié au JOIN, puis sur chaque OPS/LOCK ; quand les membres changent, il réévalue les sessions ouvertes (nouveau rôle diffusé, verrous rendus, déconnexion 4403 sans accès) |
 | 2026-10-05 | M1.8 : la session est publique (entrée directe avec le rôle par défaut, Viewer ou Editor) ou privée (demande d'accès) ; l'ancien réglage « membres seulement » de M1.7 devient une session privée (migration). La salle d'attente est une connexion WebSocket gardée par le hub (`ACCESS_PENDING`) tant qu'une demande est en attente : la décision la fait entrer (`JOINED`) ou la ferme (4403), sans sondage. Les demandes sont signalées (`ACCESS_REQUESTED`) aux seules connexions Co-owner et plus. Un accès accordé est permanent, temporaire, ou lié à la présence de la personne qui l'accorde (colonnes `expires_at` et `while_connected`) ; le hub réévalue les sessions au départ d'un compte et toutes les 30 s. Invités : table `guests`, cookie `fleight_guest` (hash du jeton), limités à un board, Viewer ou Editor, 24 h au plus, refusés tant que le board ne les accepte pas. Cooldown des codes en mémoire (10 codes inexistants en 10 min → 5 min d'attente), en plus du rate limiting |
 | 2026-10-05 | M1.9 : une seule requête d'audit filtrée côté serveur (famille d'actions, auteur, recherche dans le nom de l'auteur ou l'objet, objet, période), paginée par curseur sur l'identifiant (`before` / `nextBefore`, stable pendant que l'audit grandit) ; l'audit d'un board et l'audit global de l'Admin partagent filtres et page. L'export CSV se fait côté client, sur les entrées chargées (D12). La page « suit en direct » la première page tant qu'on n'a pas chargé d'entrées plus anciennes |
+| 2026-10-06 | M1.10 : **une seule image** — l'API (Fastify) sert le frontend construit : une origine pour les pages, l'API et le WebSocket (ni CORS ni configuration côté navigateur), une seule chose à déployer et à superviser ; un Nginx séparé n'apporterait rien tant qu'il n'y a qu'une instance. Le frontend appelle l'API sous `/api` comme en développement ; le préfixe est retiré au routage (`rewriteUrl`), et les fichiers construits vont dans `static/` pour ne pas croiser la route des images importées `/assets/:id`. L'API est livrée en **un fichier** (esbuild, packages internes inclus) : seul Argon2, module natif, est copié avec son binaire ; image Alpine, utilisateur non-root, `HEALTHCHECK` sur `/ready`. Migrations appliquées à chaque démarrage. Logs pino en JSON (horodatage ISO), sondes non journalisées. Une variable vide vaut une variable absente (docker-compose transmet `ADMIN_EMAIL=`). La CI publie `ghcr.io/joblinours/fleight-board` (`dev`, `latest` pour `main`, et chaque version taguée) après avoir démarré la stack Compose et s'y être connectée |
 | 2026-10-05 | M1.9.5 : pas de bibliothèque de composants (pas de dépendance d'interface, contrôle total du rendu tactile) : des jetons CSS (variables, redéfinies pour le thème sombre) et une dizaine de composants React maison ; icônes SVG dessinées dans le code ; police Inter servie par l'application (pas de CDN, auto-hébergement). Menus et modales rendus dans un portail pour ne pas être coupés par leur conteneur. Le canvas reste blanc en thème sombre (c'est la feuille) ; seule l'interface autour change |
 | 2026-10-02 | M1.2 : les boards sont créés par l'API (plus de création implicite au premier JOIN) ; un board existant reste ouvrable par tout utilisateur connecté qui a son lien ou son code jusqu'aux permissions (M1.7) et aux sessions publiques/privées (M1.8). Supprimer le compte du propriétaire conserve ses boards (propriétaire vide, à réattribuer en M1.7). Formats en unités monde à 96 par pouce (A4 = 794 × 1123) ; les objets peuvent déborder de la page |
 | 2026-10-02 | M1.1 : l'auteur journalisé devient l'**utilisateur** (nom du compte affiché aux autres participants) ; la détection de conflits reste par **client** (deux appareils d'un même compte sont traités comme deux participants). Le WebSocket exige une session ; l'audit d'un board est réservé aux Admins en attendant les propriétaires (M1.2). Cookie `Secure` seulement en HTTPS, pour que l'iPad fonctionne en HTTP sur le réseau local de développement |

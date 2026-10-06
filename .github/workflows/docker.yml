@@ -1,0 +1,86 @@
+name: Docker
+
+on:
+  push:
+    branches: [main, dev]
+    tags: ['v*']
+  pull_request:
+    branches: [main, dev]
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Construction
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: fleight-board:ci
+          build-args: VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Test de fumée : la stack de docker-compose.yml démarre, migre la base,
+      # crée l'Admin, sert le frontend et accepte une connexion.
+      - name: Test du déploiement (docker compose)
+        env:
+          FLEIGHT_IMAGE: fleight-board:ci
+          POSTGRES_PASSWORD: ci0123456789
+          ADMIN_USERNAME: admin
+          ADMIN_PASSWORD: admin-ci-password
+        run: |
+          docker compose up -d --no-build --wait --wait-timeout 120
+          curl -fsS http://localhost:8080/ | grep -q '<div id="root">'
+          curl -fsS http://localhost:8080/api/ready | grep -q '"ok"'
+          curl -fsS -H 'content-type: application/json' \
+            -d '{"identifier":"admin","password":"admin-ci-password"}' \
+            http://localhost:8080/api/auth/login | grep -q '"username":"admin"'
+
+      - name: Logs du déploiement
+        if: failure()
+        run: docker compose logs
+
+      - name: Connexion au registre
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publication
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha
